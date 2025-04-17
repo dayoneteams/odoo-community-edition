@@ -155,6 +155,23 @@ WAIT_PSQL_ARGS+=("--timeout=30")
 # Export PGPASSWORD for any PostgreSQL CLI commands that might be used
 [[ -n "$DB_PASSWORD" ]] && export PGPASSWORD="$DB_PASSWORD"
 
+
+install_requirements() {
+    local dir="$1"
+    if [ -d "$dir" ]; then
+        echo "Checking for requirements.txt in $dir..."
+        find "$dir" -type f -name "requirements.txt" | while read -r req_file; do
+            echo "Found $req_file. Installing dependencies..."
+            pip install --no-cache-dir -r "$req_file"
+        done
+    else
+        echo "Directory $dir not found. Skipping requirements installation."
+    fi
+}
+install_requirements "$CUSTOM_ADDONS_DIR"
+install_requirements "$MARKETPLACE_ADDONS_DIR"
+
+exec "$@"
 # Execute Odoo with appropriate arguments
 case "$1" in
     -- | /opt/odoo/venv/bin/python)

@@ -123,11 +123,12 @@ COPY ./docker/odoo.dist.conf /etc/odoo/odoo.conf
 RUN chmod +x /entrypoint.sh && \
     chmod +x /usr/local/bin/wait-for-psql.py && \
     mkdir -p /opt/odoo/custom_addons && \
-    mkdir -p /opt/odoo/extra_addons && \
     mkdir -p /var/lib/odoo
 
 # Set environment variables
 ENV ODOO_RC /etc/odoo/odoo.conf
+ENV CUSTOM_ADDONS_DIR /opt/odoo/custom_addons
+ENV MARKETPLACE_ADDONS_DIR /var/lib/odoo/addons/18.0
 ENV PATH $PATH:/opt/odoo/venv/bin
 
 # Expose Odoo services
