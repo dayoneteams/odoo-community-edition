@@ -1,0 +1,74 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    tags:
+      - "release-*"
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if tag is from docker branch
+        id: check-branch
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          BRANCH=$(git branch -r --contains $TAG_NAME | grep -v "HEAD" | sed 's/^[[:space:]]*origin\///' | head -n 1)
+          if [[ $BRANCH == docker-* ]]; then
+            echo "is_docker_branch=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_docker_branch=false" >> $GITHUB_OUTPUT
+            echo "Tag was not created from a docker-* branch. Current branch: $BRANCH"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.check-branch.outputs.is_docker_branch == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        if: steps.check-branch.outputs.is_docker_branch == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current date
+        if: steps.check-branch.outputs.is_docker_branch == 'true'
+        id: date
+        run: echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
+      - name: Extract metadata for Docker
+        if: steps.check-branch.outputs.is_docker_branch == 'true'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/dayoneteams/odoo-community
+          tags: |
+            18-python3.11-${{ steps.date.outputs.date }}
+            latest
+
+      - name: Build and push
+        if: steps.check-branch.outputs.is_docker_branch == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: |
+            type=gha
+            type=registry,ref=ghcr.io/dayoneteams/odoo-community:latest
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
