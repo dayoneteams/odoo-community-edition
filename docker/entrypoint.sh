@@ -111,7 +111,7 @@ fi
 : ${DB_PORT:=${PORT:=${DB_PORT_5432_TCP_PORT:=5432}}}
 : ${DB_USER:=${USER:=${DB_ENV_POSTGRES_USER:=${POSTGRES_USER:='odoo'}}}}
 : ${DB_PASSWORD:=${PASSWORD:=${DB_ENV_POSTGRES_PASSWORD:=${POSTGRES_PASSWORD:='odoo'}}}}
-: ${DB_NAME:=${POSTGRES_DB:=''}}
+: ${DB_NAME:=${POSTGRES_DB:='postgres'}}
 
 # Set other Odoo parameters with defaults
 : ${SMTP_SERVER:=''}
@@ -122,7 +122,6 @@ fi
 
 # Initialize command line arguments array
 ODOO_ARGS=()
-
 # Add database connection parameters
 check_config "db_host" "$DB_HOST"
 check_config "db_port" "$DB_PORT"
@@ -144,6 +143,18 @@ if [ -n "$(compgen -e | grep -E "^CONFIG_")" ]; then
     update_odoo_conf
 fi
 
+# Create wait-for-psql args from DB_ARGS
+WAIT_PSQL_ARGS=()
+[[ -n "$DB_HOST" ]] && WAIT_PSQL_ARGS+=("--db_host=$DB_HOST")
+[[ -n "$DB_PORT" ]] && WAIT_PSQL_ARGS+=("--db_port=$DB_PORT")
+[[ -n "$DB_USER" ]] && WAIT_PSQL_ARGS+=("--db_user=$DB_USER")
+[[ -n "$DB_PASSWORD" ]] && WAIT_PSQL_ARGS+=("--db_password=$DB_PASSWORD")
+[[ -n "$DB_NAME" ]] && WAIT_PSQL_ARGS+=("--db_name=$DB_NAME")
+WAIT_PSQL_ARGS+=("--timeout=30")
+
+# Export PGPASSWORD for any PostgreSQL CLI commands that might be used
+[[ -n "$DB_PASSWORD" ]] && export PGPASSWORD="$DB_PASSWORD"
+
 # Execute Odoo with appropriate arguments
 case "$1" in
     -- | /opt/odoo/venv/bin/python)
@@ -151,12 +162,12 @@ case "$1" in
         if [[ "$1" == "scaffold" ]] ; then
             exec $PYTHON "$@"
         else
-            wait-for-psql.py ${ODOO_ARGS[@]} --timeout=30
+            wait-for-psql.py "${WAIT_PSQL_ARGS[@]}"
             exec $PYTHON "$@" "${ODOO_ARGS[@]}"
         fi
         ;;
     -*)
-        wait-for-psql.py ${ODOO_ARGS[@]} --timeout=30
+        wait-for-psql.py "${WAIT_PSQL_ARGS[@]}"
         exec $PYTHON "$@" "${ODOO_ARGS[@]}"
         ;;
     *)
