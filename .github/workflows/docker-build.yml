@@ -55,6 +55,9 @@ jobs:
           images: ghcr.io/dayoneteams/odoo-community
           tags: |
             18-python3.11-${{ steps.date.outputs.date }}
+            18-python3.11-pg16-${{ steps.date.outputs.date }}
+            18-${{ steps.date.outputs.date }}
+            18
             latest
 
       - name: Build and push
