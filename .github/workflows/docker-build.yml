@@ -78,11 +78,4 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha
-            type=registry,ref=ghcr.io/dayoneteams/odoo-community:18-python3.11-${{ steps.date.outputs.date }}
-            type=registry,ref=ghcr.io/dayoneteams/odoo-community:latest
-          cache-to: type=gha,mode=max
           platforms: linux/amd64
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
