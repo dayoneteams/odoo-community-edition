@@ -7,7 +7,7 @@ set -e
 #==============================================================================
 
 # Define config file location if not set
-: ${ODOO_RC:="/etc/odoo/odoo.conf"}
+: ${ODOO_RC:="/opt/odoo/odoo.conf"}
 PYTHON="/opt/odoo/venv/bin/python"
 
 #==============================================================================

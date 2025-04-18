@@ -117,7 +117,7 @@ RUN rm -f /opt/odoo/wkhtmltox.deb && chmod +x /opt/odoo/odoo-bin
 # Copy config and startup scripts
 COPY ./docker/wait-for-psql.py /usr/local/bin/wait-for-psql.py
 COPY ./docker/entrypoint.sh /
-COPY ./docker/odoo.dist.conf /etc/odoo/odoo.conf
+COPY ./docker/odoo.dist.conf /opt/odoo/odoo.conf
 
 # Create necessary directories
 RUN chmod +x /entrypoint.sh && \
@@ -126,7 +126,7 @@ RUN chmod +x /entrypoint.sh && \
     mkdir -p /var/lib/odoo
 
 # Set environment variables
-ENV ODOO_RC /etc/odoo/odoo.conf
+ENV ODOO_RC /opt/odoo/odoo.conf
 ENV CUSTOM_ADDONS_DIR /opt/odoo/custom_addons
 ENV MARKETPLACE_ADDONS_DIR /var/lib/odoo/addons/18.0
 ENV PATH $PATH:/opt/odoo/venv/bin
