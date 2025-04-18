@@ -112,7 +112,7 @@ RUN dpkg --force-depends -i /tmp/wkhtmltox.deb \
 
 # Copy virtual environment and Odoo from builder
 COPY --from=builder /opt/odoo /opt/odoo
-RUN chmod +x /opt/odoo/odoo-bin
+RUN rm -f /opt/odoo/wkhtmltox.deb && chmod +x /opt/odoo/odoo-bin
 
 # Copy config and startup scripts
 COPY ./docker/wait-for-psql.py /usr/local/bin/wait-for-psql.py
