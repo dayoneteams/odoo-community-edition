@@ -1,0 +1,39 @@
+#version: '3.8'
+services:
+  db:
+    image: postgres:16
+    environment:
+      - POSTGRES_PASSWORD=odoo
+      - POSTGRES_USER=odoo
+      - POSTGRES_DB=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - odoo-db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  odoo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+    ports:
+      - "8069:8069"
+      - "8071:8071"
+      - "8072:8072"
+    environment:
+      - DB_HOST=db
+      - DB_USER=odoo
+      - DB_PASSWORD=odoo
+      - DB_NAME=postgres
+      - ADMIN_PASSWRD=dajzsdhfkjashdfjk
+    volumes:
+      - odoo-web-data:/var/lib/odoo
+      - ./custom-addons:/mnt/extra-addons
+      - ./config:/opt/odoo/config
+    restart: unless-stopped
+
+volumes:
+  odoo-db-data:
+  odoo-web-data: 

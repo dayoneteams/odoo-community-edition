@@ -9,6 +9,7 @@ set -e
 # Define config file location if not set
 : ${ODOO_RC:="/opt/odoo/odoo.conf"}
 PYTHON="/opt/odoo/venv/bin/python"
+ODOO_BIN="/opt/odoo/odoo-bin"
 
 #==============================================================================
 # FUNCTIONS
@@ -149,7 +150,6 @@ WAIT_PSQL_ARGS=()
 [[ -n "$DB_PORT" ]] && WAIT_PSQL_ARGS+=("--db_port=$DB_PORT")
 [[ -n "$DB_USER" ]] && WAIT_PSQL_ARGS+=("--db_user=$DB_USER")
 [[ -n "$DB_PASSWORD" ]] && WAIT_PSQL_ARGS+=("--db_password=$DB_PASSWORD")
-[[ -n "$DB_NAME" ]] && WAIT_PSQL_ARGS+=("--db_name=$DB_NAME")
 WAIT_PSQL_ARGS+=("--timeout=30")
 
 # Export PGPASSWORD for any PostgreSQL CLI commands that might be used
@@ -171,24 +171,7 @@ install_requirements() {
 install_requirements "$CUSTOM_ADDONS_DIR"
 install_requirements "$MARKETPLACE_ADDONS_DIR"
 
-exec "$@"
-# Execute Odoo with appropriate arguments
-case "$1" in
-    -- | /opt/odoo/venv/bin/python)
-        shift
-        if [[ "$1" == "scaffold" ]] ; then
-            exec $PYTHON "$@"
-        else
-            wait-for-psql.py "${WAIT_PSQL_ARGS[@]}"
-            exec $PYTHON "$@" "${ODOO_ARGS[@]}"
-        fi
-        ;;
-    -*)
-        wait-for-psql.py "${WAIT_PSQL_ARGS[@]}"
-        exec $PYTHON "$@" "${ODOO_ARGS[@]}"
-        ;;
-    *)
-        exec "$@"
-esac
+echo "Executing Odoo with arguments: ${ODOO_ARGS[@]}"
+exec $PYTHON $ODOO_BIN "${ODOO_ARGS[@]}" -i base
 
 exit 1
