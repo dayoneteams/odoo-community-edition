@@ -135,4 +135,4 @@ ENV PATH $PATH:/opt/odoo/venv/bin
 EXPOSE 8069 8071 8072
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["/opt/odoo/venv/bin/python", "/opt/odoo/odoo-bin", "-c", "/etc/odoo/odoo.conf"] 
+CMD ["/opt/odoo/venv/bin/python", "/opt/odoo/odoo-bin", "-c", "/opt/odoo/odoo.conf"] 
