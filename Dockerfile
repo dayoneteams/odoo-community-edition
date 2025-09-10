@@ -13,6 +13,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
+    bash \
     curl \
     gnupg \
     unzip \
@@ -85,7 +86,8 @@ RUN apt-get update && \
     libjpeg62-turbo \
     xfonts-75dpi \
     xfonts-base \
-    fontconfig \
+    fontconfig \ 
+    bash \
     # Install PostgreSQL client
     lsb-release \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg \
@@ -110,6 +112,8 @@ RUN dpkg --force-depends -i /tmp/wkhtmltox.deb \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+
+
 # Copy virtual environment and Odoo from builder
 COPY --from=builder /opt/odoo /opt/odoo
 RUN rm -f /opt/odoo/wkhtmltox.deb && chmod +x /opt/odoo/odoo-bin
@@ -131,7 +135,10 @@ ENV CUSTOM_ADDONS_DIR /opt/odoo/custom_addons
 ENV MARKETPLACE_ADDONS_DIR /var/lib/odoo/addons/18.0
 ENV PATH $PATH:/opt/odoo/venv/bin
 
+RUN groupadd -r odoo && useradd -r -g odoo odoo
+RUN chown -R odoo:odoo /opt/odoo && chown -R /var/lib/odoo
+USER odoo
 # Expose Odoo services
-EXPOSE 8069 8071 8072
+EXPOSE 8069
 
 ENTRYPOINT ["/entrypoint.sh"]
