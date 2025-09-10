@@ -136,7 +136,7 @@ ENV MARKETPLACE_ADDONS_DIR /var/lib/odoo/addons/18.0
 ENV PATH $PATH:/opt/odoo/venv/bin
 
 RUN groupadd -r odoo && useradd -r -g odoo odoo
-RUN chown -R odoo:odoo /opt/odoo && chown -R /var/lib/odoo
+RUN chown -R odoo:odoo /opt/odoo && chown -R odoo:odoo /var/lib/odoo
 USER odoo
 # Expose Odoo services
 EXPOSE 8069
