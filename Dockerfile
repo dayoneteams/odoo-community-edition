@@ -19,7 +19,6 @@ RUN apt-get update && \
     unzip \
     git \
     python3-dev \
-    # Python-related build dependencies
     libxml2-dev \
     libxslt1-dev \
     libldap2-dev \
@@ -28,20 +27,18 @@ RUN apt-get update && \
     zlib1g-dev \
     libjpeg-dev \
     liblcms2-dev \
-    # Only necessary build dependencies
     libfontconfig1-dev \
     libfreetype6-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Download Odoo source code
-# Instead of downloading from GitHub, copy from local source
-
 COPY . /opt/odoo/
 RUN rm -rf /opt/odoo/docker
 
 # Setup and activate Python virtual environment
-RUN python -m venv /opt/odoo/venv
+RUN python -m venv /opt/odoo/venv && \
+    chown -R 999:999 /opt/odoo/venv  # Ensure odoo user (UID 999) owns venv
 ENV PATH="/opt/odoo/venv/bin:$PATH"
 
 # Install Odoo dependencies
@@ -72,11 +69,9 @@ WORKDIR /opt/odoo
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive \
     apt-get install -y --no-install-recommends \
-    # Runtime only dependencies
     ca-certificates \
     curl \
     gnupg \
-    # Runtime dependencies for wkhtmltopdf
     libx11-6 \
     libxcb1 \
     libxext6 \
@@ -86,15 +81,13 @@ RUN apt-get update && \
     libjpeg62-turbo \
     xfonts-75dpi \
     xfonts-base \
-    fontconfig \ 
+    fontconfig \
     bash \
-    # Install PostgreSQL client
     lsb-release \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
     && apt-get install -y postgresql-client-16 \
-    # Required shared libraries for Python extensions
     libxml2 \
     libxslt1.1 \
     libldap-2.5-0 \
@@ -112,8 +105,6 @@ RUN dpkg --force-depends -i /tmp/wkhtmltox.deb \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-
-
 # Copy virtual environment and Odoo from builder
 COPY --from=builder /opt/odoo /opt/odoo
 RUN rm -f /opt/odoo/wkhtmltox.deb && chmod +x /opt/odoo/odoo-bin
@@ -123,11 +114,14 @@ COPY ./docker/wait-for-psql.py /usr/local/bin/wait-for-psql.py
 COPY ./docker/entrypoint.sh /
 COPY ./docker/odoo.dist.conf /opt/odoo/odoo.conf
 
-# Create necessary directories
-RUN chmod +x /entrypoint.sh && \
+# Create necessary directories and set permissions
+RUN groupadd -r -g 999 odoo && \
+    useradd -r -g odoo -u 999 -m -d /home/odoo odoo && \
+    mkdir -p /var/lib/odoo/sessions /home/odoo/.local && \
+    chmod +x /entrypoint.sh && \
     chmod +x /usr/local/bin/wait-for-psql.py && \
     mkdir -p /opt/odoo/custom_addons && \
-    mkdir -p /var/lib/odoo
+    chown -R odoo:odoo /opt/odoo /var/lib/odoo /home/odoo
 
 # Set environment variables
 ENV ODOO_RC /opt/odoo/odoo.conf
@@ -135,10 +129,6 @@ ENV CUSTOM_ADDONS_DIR /opt/odoo/custom_addons
 ENV MARKETPLACE_ADDONS_DIR /var/lib/odoo/addons/18.0
 ENV PATH $PATH:/opt/odoo/venv/bin
 
-RUN groupadd -r odoo && useradd -r -g odoo odoo
-RUN chown -R odoo:odoo /opt/odoo && chown -R /var/lib/odoo
 USER odoo
-# Expose Odoo services
 EXPOSE 8069
-
 ENTRYPOINT ["/entrypoint.sh"]
