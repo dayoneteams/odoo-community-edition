@@ -82,7 +82,11 @@ class ReportMoOverview(models.AbstractModel):
 
         if production.bom_id:
             currency = (production.company_id or self.env.company).currency_id
-            missing_components = (bom_line for bom_line in production.bom_id.bom_line_ids if bom_line not in (production.move_raw_ids.bom_line_id + self._get_kit_bom_lines(production.bom_id)))
+            current_bom_lines = production.move_raw_ids.bom_line_id | self._get_kit_bom_lines(production.bom_id)
+            missing_components = production.bom_id.bom_line_ids.filtered(
+                lambda bom_line: bom_line not in current_bom_lines and
+                not bom_line._skip_bom_line(production.product_id)
+            )
             missing_operations = (bom_line for bom_line in production.bom_id.operation_ids if bom_line not in production.workorder_ids.operation_id)
             for line in missing_components:
                 line_cost = line.product_id.uom_id._compute_price(line.product_id.standard_price, line.product_uom_id) * line.product_qty
@@ -329,7 +333,7 @@ class ReportMoOverview(models.AbstractModel):
             })
             total_expected_time += workorder.duration_expected
             total_current_time += wo_duration if is_workorder_started else workorder.duration_expected
-            total_expected_cost += mo_cost
+            total_expected_cost += production.company_id.currency_id.round(mo_cost)
             total_bom_cost = self._sum_bom_cost(total_bom_cost, bom_cost)
             total_real_cost += real_cost
 

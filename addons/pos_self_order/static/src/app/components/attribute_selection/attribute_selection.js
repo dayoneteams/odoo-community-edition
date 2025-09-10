@@ -1,6 +1,5 @@
 import { Component, onMounted, useRef, useState } from "@odoo/owl";
 import { useSelfOrder } from "@pos_self_order/app/self_order_service";
-import { attributeFlatter, attributeFormatter } from "@pos_self_order/app/utils";
 import { floatIsZero } from "@web/core/utils/numbers";
 
 export class AttributeSelection extends Component {
@@ -72,16 +71,6 @@ export class AttributeSelection extends Component {
         return true;
     }
 
-    get attributeSelected() {
-        const flatAttribute = attributeFlatter(this.selectedValues);
-        const customAttribute = this.env.customValues;
-        return attributeFormatter(
-            this.selfOrder.models["product.attribute"].getAllBy("id"),
-            flatAttribute,
-            customAttribute
-        );
-    }
-
     availableAttributeValue(attribute) {
         return this.selfOrder.config.self_ordering_mode === "kiosk"
             ? attribute.product_template_value_ids.filter((a) => !a.is_custom)
@@ -134,7 +123,7 @@ export class AttributeSelection extends Component {
 
     shouldShowPriceExtra(value) {
         const priceExtra = value.price_extra;
-        return !floatIsZero(priceExtra, this.selfOrder.config.currency_decimals);
+        return !floatIsZero(priceExtra, this.selfOrder.currency.decimal_places);
     }
 
     getfPriceExtra(value) {

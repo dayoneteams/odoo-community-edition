@@ -833,7 +833,8 @@ export class ListRenderer extends Component {
     getFormattedValue(column, record) {
         const fieldName = column.name;
         if (column.options.enable_formatting === false) {
-            return record.data[fieldName];
+            const value = record.data[fieldName];
+            return value === false ? "" : value;
         }
         return getFormattedValue(record, fieldName, column);
     }
@@ -1050,7 +1051,8 @@ export class ListRenderer extends Component {
             return;
         }
         element.dataset.clicked = true;
-
+        // re-enable the button after a while (this is a manual debounce, but record by record)
+        setTimeout(() => delete element.dataset.clicked, 500);
         this.onDeleteRecord(record, ev);
     }
 

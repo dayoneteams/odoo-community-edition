@@ -79,7 +79,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/web_hierarchy/static/src/hierarchy_controller.xml:0
 msgid "New"
-msgstr ""
+msgstr "نوێ"
 
 #. module: web_hierarchy
 #. odoo-javascript
@@ -104,7 +104,7 @@ msgstr ""
 #. module: web_hierarchy
 #: model:ir.model,name:web_hierarchy.model_ir_ui_view
 msgid "View"
-msgstr ""
+msgstr "بینین"
 
 #. module: web_hierarchy
 #: model:ir.model.fields,field_description:web_hierarchy.field_ir_actions_act_window_view__view_mode

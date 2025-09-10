@@ -3,13 +3,14 @@ import {
     bootstrapToTable,
     cardToTable,
     classToStyle,
+    createMso,
     formatTables,
     getCSSRules,
     listGroupToTable,
     normalizeColors,
     normalizeRem,
 } from "@mail/views/web/fields/html_mail_field/convert_inline";
-import { afterEach, beforeEach, describe, expect, getFixture, test } from "@odoo/hoot";
+import { beforeEach, describe, expect, getFixture, test } from "@odoo/hoot";
 import { enableTransitions } from "@odoo/hoot-mock";
 import {
     getGridHtml,
@@ -849,14 +850,9 @@ describe("Convert classes to inline styles", () => {
         editable = document.createElement("div");
 
         styleEl = document.createElement("style");
-        styleEl.type = "text/css";
         styleEl.title = "test-stylesheet";
         document.head.appendChild(styleEl);
         styleSheet = [...document.styleSheets].find((sheet) => sheet.title === "test-stylesheet");
-    });
-    afterEach(() => {
-        // @todo to adapt when hoot has a better way to remove it
-        document.head.removeChild(styleEl);
     });
 
     test("convert Bootstrap classes to inline styles", async () => {
@@ -1419,5 +1415,26 @@ describe("Convert classes to inline styles", () => {
         );
 
         // @todo to adapt when hoot has a better way to remove it
+    });
+});
+
+describe("Properly add MSO conditions", () => {
+    test("Create mso properly", async () => {
+        expect(createMso("<div>abcde</div>").nodeValue).toEqual(
+            `[if mso]><div>abcde</div><![endif]`,
+            { message: "Should wrap the content in mso condition" }
+        );
+
+        expect(
+            createMso("<div>ef<!--[if mso]><div>abcd</div><![endif]-->gh</div>").nodeValue
+        ).toEqual(`[if mso]><div>ef<div>abcd</div>gh</div><![endif]`, {
+            message: "Should wrap the content inside one mso condition",
+        });
+
+        expect(
+            createMso("<div>ef<!--[if !mso]><div>abcd</div><![endif]-->gh</div>").nodeValue
+        ).toEqual(`[if mso]><div>efgh</div><![endif]`, {
+            message: "Should remove nested mso hide condition",
+        });
     });
 });

@@ -27,7 +27,6 @@ class AccountAnalyticLine(models.Model):
             self.env['sale.order.line']._sellable_lines_domain(),
             self.env['sale.order.line']._domain_sale_line_service(),
             [
-                ('qty_delivered_method', 'in', ['analytic', 'timesheet']),
                 ('order_partner_id.commercial_partner_id', '=', unquote('commercial_partner_id')),
             ],
         ])
@@ -49,7 +48,7 @@ class AccountAnalyticLine(models.Model):
     @api.depends('project_id.partner_id.commercial_partner_id', 'task_id.partner_id.commercial_partner_id')
     def _compute_commercial_partner(self):
         for timesheet in self:
-            timesheet.commercial_partner_id = timesheet.task_id.partner_id.commercial_partner_id or timesheet.project_id.partner_id.commercial_partner_id
+            timesheet.commercial_partner_id = timesheet.task_id.sudo().partner_id.commercial_partner_id or timesheet.project_id.sudo().partner_id.commercial_partner_id
 
     @api.depends('so_line.product_id', 'project_id.billing_type', 'amount')
     def _compute_timesheet_invoice_type(self):

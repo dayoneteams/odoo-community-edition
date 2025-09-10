@@ -14,7 +14,7 @@ import { useNestedSortable } from "@web/core/utils/nested_sortable";
  * the same x position to prevent triggering horizontal moves.
  *
  * @param {import("@odoo/hoot-dom").Target} from
- * @param {import("../../_framework/dom_test_helpers").DragAndDropOptions} [options]
+ * @param {import("@web/../tests/web_test_helpers").DragAndDropOptions} [options]
  */
 const sortableDrag = async (from, options) => {
     const fromRect = queryRect(from);
@@ -974,7 +974,7 @@ test("shouldn't drag above max level", async () => {
                     expect.step("end");
                     expect(element).toHaveAttribute("id", "dragged");
                     expect(element.parentElement.closest("#parent")).toBe(null);
-                    expect(".o_nested_sortable_placeholder.d-none").toHaveCount(1);
+                    expect(element.previousSibling).toHaveClass("o_nested_sortable_placeholder");
                 },
             });
         }

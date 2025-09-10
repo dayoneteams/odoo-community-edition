@@ -48,7 +48,7 @@
             <div t-if="o.partner_id.l10n_hu_group_vat">Group Member Tax ID: <span t-field="o.partner_id.l10n_hu_group_vat"/></div>
             <div groups="account.group_delivery_invoice_address" name="shipping_address_block">
                 <div/>
-                <strong>Shipping Address:</strong>
+                <strong class="d-block mt-3">Shipping Address:</strong>
                 <div t-field="o.partner_shipping_id" t-options='{"widget": "contact", "fields": ["address", "name"], "no_marker": True}'/>
             </div>
         </xpath>
@@ -97,8 +97,7 @@
         <xpath expr="//td[@name='account_invoice_line_name']/span" position="after">
             <div t-if="line.product_id.l10n_hu_product_code_type and line.product_id.l10n_hu_product_code">
                 <span t-if="line.product_id.l10n_hu_product_code_type == 'OTHER'">Other Product Code</span>
-                <span t-else="else" t-out="line.product_id.l10n_hu_product_code_type"/>
-                :
+                <span t-else="else" t-out="line.product_id.l10n_hu_product_code_type"/>:
                 <span t-out="line.product_id.l10n_hu_product_code"/>
             </div>
         </xpath>

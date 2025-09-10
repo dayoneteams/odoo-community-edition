@@ -36,7 +36,7 @@ msgstr ""
 #. module: spreadsheet_account
 #: model:ir.model,name:spreadsheet_account.model_account_account
 msgid "Account"
-msgstr ""
+msgstr "ئەژمێر"
 
 #. module: spreadsheet_account
 #. odoo-javascript
@@ -53,25 +53,25 @@ msgstr ""
 #. module: spreadsheet_account
 #: model:ir.model,name:spreadsheet_account.model_res_company
 msgid "Companies"
-msgstr ""
+msgstr "کۆمپانیاکان"
 
 #. module: spreadsheet_account
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Cost of Revenue"
-msgstr ""
+msgstr "تێچووی داهات"
 
 #. module: spreadsheet_account
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Credit Card"
-msgstr ""
+msgstr "کارتی بانکیی"
 
 #. module: spreadsheet_account
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Current Assets"
-msgstr ""
+msgstr "سەروەت و سامانی ئێستا"
 
 #. module: spreadsheet_account
 #. odoo-javascript
@@ -89,25 +89,25 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Depreciation"
-msgstr ""
+msgstr "دابەزینی بەها"
 
 #. module: spreadsheet_account
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Equity"
-msgstr ""
+msgstr "یەکسانی"
 
 #. module: spreadsheet_account
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Expenses"
-msgstr ""
+msgstr "خەرجیەکان"
 
 #. module: spreadsheet_account
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Fixed Assets"
-msgstr ""
+msgstr "سەرمایەی جێگیر"
 
 #. module: spreadsheet_account
 #. odoo-javascript
@@ -131,7 +131,7 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Income"
-msgstr ""
+msgstr "داهات"
 
 #. module: spreadsheet_account
 #. odoo-javascript
@@ -161,25 +161,25 @@ msgstr ""
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Other Income"
-msgstr ""
+msgstr "داهاتی تر"
 
 #. module: spreadsheet_account
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Payable"
-msgstr ""
+msgstr "پارە دەدرێت"
 
 #. module: spreadsheet_account
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Prepayments"
-msgstr ""
+msgstr "پارەی پێشوەختە"
 
 #. module: spreadsheet_account
 #. odoo-javascript
 #: code:addons/spreadsheet_account/static/src/account_group_auto_complete.js:0
 msgid "Receivable"
-msgstr ""
+msgstr "وەرگیراو"
 
 #. module: spreadsheet_account
 #. odoo-javascript

@@ -25,9 +25,11 @@ import { getDefaultDomain } from "@web/core/domain_selector/utils";
 
 const { DateTime } = luxon;
 
-/** @typedef {import("@web/core/domain").DomainRepr} DomainRepr */
-/** @typedef {import("@web/core/domain").DomainListRepr} DomainListRepr */
-/** @typedef {import("../views/utils").OrderTerm} OrderTerm */
+/**
+ * @typedef {import("@web/core/domain").DomainRepr} DomainRepr
+ * @typedef {import("@web/core/domain").DomainListRepr} DomainListRepr
+ * @typedef {import("@web/search/utils/order_by").OrderTerm} OrderTerm
+ */
 
 /**
  * @typedef {Object} ComparisonDomain
@@ -813,7 +815,8 @@ export class SearchModel extends EventBus {
 
         const getFieldDef = await this.makeGetFieldDef(this.resModel, treeFromDomain(domain));
         const tree = treeFromDomain(domain, { distributeNot: !this.isDebugMode, getFieldDef });
-        const trees = !tree.negate && tree.value === "&" ? tree.children : [tree];
+        const containsChildren = !tree.negate && tree.type === "connector" && tree.value == "&";
+        const trees = containsChildren ? tree.children : [tree];
         const promises = trees.map(async (tree) => {
             const description = await this.getDomainTreeDescription(this.resModel, tree);
             const preFilter = {
@@ -1157,12 +1160,12 @@ export class SearchModel extends EventBus {
                         selection: definition.selection,
                         sortable: true,
                         store: true,
-                        string: `${definition.string} (${definitionRecordName})`,
+                        string: definition.string,
                         type: definition.type,
                         relatedPropertyField: field,
                     };
 
-                    if (!searchItemsNames.includes(fullName)) {
+                    if (!searchItemsNames.includes(fullName) && definition.type !== "separator") {
                         const groupByItem = {
                             description: definition.string,
                             definitionRecordId,

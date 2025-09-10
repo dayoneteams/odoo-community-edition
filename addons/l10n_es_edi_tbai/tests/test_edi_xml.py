@@ -22,7 +22,7 @@ class TestEdiTbaiXmls(TestEsEdiTbaiCommon):
         cls.out_invoice = cls.env['account.move'].create({
             'name': 'INV/01',
             'move_type': 'out_invoice',
-            'invoice_date': date(2022, 1, 1),
+            'invoice_date': date(2025, 1, 1),
             'partner_id': cls.partner_a.id,
             'invoice_line_ids': [(0, 0, {
                 'product_id': cls.product_a.id,
@@ -32,6 +32,20 @@ class TestEdiTbaiXmls(TestEsEdiTbaiCommon):
                 'tax_ids': [(6, 0, cls._get_tax_by_xml_id('s_iva21b').ids)],
             })],
         })
+
+    def create_total_refund(self):
+        move_reversal = self.env['account.move.reversal'].with_context(
+            active_model="account.move",
+            active_ids=self.out_invoice.ids
+        ).create({
+            'date': '2020-02-01',
+            'reason': 'no reason',
+            'journal_id': self.out_invoice.journal_id.id,
+        })
+        reversal = move_reversal.refund_moves()
+        reverse_move = self.env['account.move'].browse(reversal['res_id'])
+        reverse_move.action_post()
+        return reverse_move
 
     def test_xml_tree_post(self):
         """Test of Customer Invoice XML"""
@@ -43,12 +57,28 @@ class TestEdiTbaiXmls(TestEsEdiTbaiCommon):
             xml_expected = etree.fromstring(super()._get_sample_xml('xml_post.xml'))
             self.assertXmlTreeEqual(xml_doc, xml_expected)
 
+    def test_xml_tree_post_refund(self):
+        """Test of Customer Invoice XML"""
+        with freeze_time(self.frozen_today):
+            edi_document = self.out_invoice._l10n_es_tbai_create_edi_document(cancel=False)
+            edi_document._generate_xml(self.out_invoice._l10n_es_tbai_get_values(cancel=False))
+            self.out_invoice.action_post()
+            self.out_invoice.l10n_es_tbai_post_document_id = edi_document.id
+            refund = self.create_total_refund()
+            edi_document = refund._l10n_es_tbai_create_edi_document(cancel=False)
+            edi_document._generate_xml(refund._l10n_es_tbai_get_values(cancel=False))
+            xml_doc = edi_document._get_xml()
+            xml_doc.remove(xml_doc.find("Signature", namespaces=NS_MAP))
+
+            xml_expected = etree.fromstring(super()._get_sample_xml('xml_post_refund.xml'))
+            self.assertXmlTreeEqual(xml_doc, xml_expected)
+
     def test_xml_tree_post_generic_sequence(self):
         """Test TBAI on moves whose sequence does not contain a '/'"""
         with freeze_time(self.frozen_today):
             invoice = self.out_invoice.copy({
                 'name': 'INV01',
-                'invoice_date': date(2022, 1, 1),
+                'invoice_date': date(2025, 1, 1),
             })
             edi_document = invoice._l10n_es_tbai_create_edi_document(cancel=False)
             edi_document._generate_xml(invoice._l10n_es_tbai_get_values(cancel=False))
@@ -126,7 +156,6 @@ class TestEdiTbaiXmls(TestEsEdiTbaiCommon):
                         <BaseImponible>984.00</BaseImponible>
                         <TipoImpositivo>21.00</TipoImpositivo>
                         <CuotaImpuesto>206.64</CuotaImpuesto>
-                        <OperacionEnRecargoDeEquivalenciaORegimenSimplificado>N</OperacionEnRecargoDeEquivalenciaORegimenSimplificado>
                       </DetalleIVA>
                     </DesgloseIVA>
                 </xpath>
@@ -278,7 +307,7 @@ class TestEdiTbaiXmls(TestEsEdiTbaiCommon):
 
     def test_xml_tree_cancel(self):
         post_xml = b"""<TicketBAI>
-<CabeceraFactura><FechaExpedicionFactura>01-01-2022</FechaExpedicionFactura></CabeceraFactura>
+<CabeceraFactura><FechaExpedicionFactura>01-01-2025</FechaExpedicionFactura></CabeceraFactura>
 <ds:SignatureValue xmlns:ds="http://www.w3.org/2000/09/xmldsig#">TEXT</ds:SignatureValue>
 </TicketBAI>"""  # hack to set out_invoice's registration date
         post_edi_document = self.out_invoice._l10n_es_tbai_create_edi_document()

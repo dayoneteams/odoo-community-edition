@@ -253,12 +253,34 @@ export class Message extends Record {
         return this.date || DateTime.now();
     }
 
+    /**
+     * Get the effective persona performing actions on this message.
+     * Priority order: logged-in user, portal partner (token-authenticated), guest.
+     *
+     * @returns {import("models").Persona}
+     */
+    get effectiveSelf() {
+        return this.thread?.effectiveSelf ?? this.store.self;
+    }
+
+    /**
+     * Get the current user's active identities.These identities include both
+     * the cookie-authenticated persona and the partner authenticated with the
+     * portal token in the context of the related thread.
+     *
+     * @deprecated
+     * @returns {import("models").Persona[]}
+     */
+    get selves() {
+        return this.thread?.selves ?? [this.store.self];
+    }
+
     get datetimeShort() {
         return this.datetime.toLocaleString(DateTime.DATETIME_SHORT_WITH_SECONDS);
     }
 
     get isSelfMentioned() {
-        return this.store.self.in(this.recipients);
+        return this.effectiveSelf.in(this.recipients);
     }
 
     get isHighlightedFromMention() {
@@ -270,7 +292,7 @@ export class Message extends Record {
             if (!this.author) {
                 return false;
             }
-            return this.author.eq(this.store.self);
+            return this.author.eq(this.effectiveSelf);
         },
     });
 
@@ -302,6 +324,10 @@ export class Message extends Record {
         return candidates.has(this.subject?.toLowerCase());
     }
 
+    get persistent() {
+        return Number.isInteger(this.id);
+    }
+
     get resUrl() {
         return url(stateToUrl({ model: this.thread.model, resId: this.thread.id }));
     }
@@ -320,12 +346,7 @@ export class Message extends Record {
     isEmpty = Record.attr(false, {
         /** @this {import("models").Message} */
         compute() {
-            return (
-                this.isBodyEmpty &&
-                this.attachment_ids.length === 0 &&
-                this.trackingValues.length === 0 &&
-                !this.subtype_description
-            );
+            return this.computeIsEmpty();
         },
     });
     isBodyEmpty = Record.attr(undefined, {
@@ -348,6 +369,15 @@ export class Message extends Record {
             );
         },
     });
+
+    computeIsEmpty() {
+        return (
+            this.isBodyEmpty &&
+            this.attachment_ids.length === 0 &&
+            this.trackingValues.length === 0 &&
+            !this.subtype_description
+        );
+    }
 
     /**
      * Determines if the link preview is actually the main content of the
@@ -398,7 +428,8 @@ export class Message extends Record {
             !this.is_transient &&
                 this.thread &&
                 this.store.self.type === "partner" &&
-                this.store.self.isInternalUser
+                this.store.self.isInternalUser &&
+                this.persistent
         );
     }
 
@@ -456,6 +487,7 @@ export class Message extends Record {
         if (this.hasLink && this.store.hasLinkPreviewFeature) {
             rpc("/mail/link_preview", { message_id: this.id }, { silent: true });
         }
+        return data;
     }
 
     async react(content) {
@@ -474,15 +506,19 @@ export class Message extends Record {
     }
 
     async remove() {
-        await rpc("/mail/message/update_content", {
+        const data = await rpc("/mail/message/update_content", this.removeParams);
+        this.store.insert(data, { html: true });
+        return data;
+    }
+
+    get removeParams() {
+        return {
             attachment_ids: [],
             attachment_tokens: [],
             body: "",
             message_id: this.id,
             ...this.thread.rpcParams,
-        });
-        this.body = "";
-        this.attachment_ids = [];
+        };
     }
 
     async setDone() {

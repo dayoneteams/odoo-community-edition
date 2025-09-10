@@ -73,9 +73,9 @@ class StockMove(models.Model):
                 return {self.env['stock.lot']: price_unit}
         else:
             if self.product_id.lot_valuated:
-                return {lot: lot.standard_price or self.product_id.standard_price for lot in self.lot_ids}
+                return {lot: lot.standard_price or self.product_id.with_company(self.company_id).standard_price for lot in self.lot_ids}
             else:
-                return {self.env['stock.lot']: self.product_id.standard_price}
+                return {self.env['stock.lot']: self.product_id.with_company(self.company_id).standard_price}
 
     @api.model
     def _get_valued_types(self):
@@ -241,9 +241,7 @@ class StockMove(models.Model):
                 quantities[forced_quantity[0]] += forced_quantity[1]
             else:
                 for line in lines:
-                    quantities[line.lot_id] += line.product_uom_id._compute_quantity(
-                        line.quantity, move.product_id.uom_id
-                    )
+                    quantities[line.lot_id] += line.quantity_product_uom
             if float_is_zero(sum(quantities.values()), precision_rounding=move.product_id.uom_id.rounding):
                 continue
 
@@ -287,9 +285,7 @@ class StockMove(models.Model):
                 quantities[forced_quantity[0]] += forced_quantity[1]
             elif move.product_id.lot_valuated:
                 for line in lines:
-                    quantities[line.lot_id] += line.product_uom_id._compute_quantity(
-                        line.quantity, move.product_id.uom_id
-                    )
+                    quantities[line.lot_id] += line.quantity_product_uom
             else:
                 quantities[self.env['stock.lot']] += move.product_qty
 
@@ -375,7 +371,7 @@ class StockMove(models.Model):
         stock_valuation_layers._validate_accounting_entries()
         stock_valuation_layers._validate_analytic_accounting_entries()
 
-        valued_moves['out'].filtered(lambda m: m.product_id.lot_valuated)._product_price_update_after_done()
+        valued_moves['out'].filtered(lambda m: m.product_id.lot_valuated).sudo()._product_price_update_after_done()
 
         stock_valuation_layers._check_company()
 
@@ -424,7 +420,7 @@ class StockMove(models.Model):
                 quantity_by_lot[forced_qty[0]] += forced_qty[1]
             else:
                 for valued_move_line in valued_move_lines:
-                    quantity_by_lot[valued_move_line.lot_id] += valued_move_line.product_uom_id._compute_quantity(valued_move_line.quantity, move.product_id.uom_id)
+                    quantity_by_lot[valued_move_line.lot_id] += valued_move_line.quantity_product_uom
 
             qty = sum(quantity_by_lot.values())
             move_cost = move._get_price_unit()
@@ -512,9 +508,7 @@ class StockMove(models.Model):
                 quantities[forced_quantity[0]] += forced_quantity[1]
             else:
                 for line in lines:
-                    quantities[line.lot_id] += line.product_uom_id._compute_quantity(
-                        line.quantity, move.product_id.uom_id
-                    )
+                    quantities[line.lot_id] += line.quantity_product_uom
             if move.product_id.lot_valuated:
                 unit_cost = {lot: lot.standard_price for lot in move.lot_ids}
             else:
@@ -763,9 +757,7 @@ class StockMove(models.Model):
                 cost = -1 * cost
                 anglosaxon_am_vals = self.with_company(self.company_id)._prepare_account_move_vals(acc_valuation, acc_dest, journal_id, qty, description, svl_id, cost)
         elif self._is_dropshipped_returned():
-            if cost > 0 and self.location_dest_id._should_be_valued():
-                anglosaxon_am_vals = self.with_company(self.company_id).with_context(is_returned=True)._prepare_account_move_vals(acc_valuation, acc_src, journal_id, qty, description, svl_id, cost)
-            elif cost > 0:
+            if cost > 0:
                 anglosaxon_am_vals = self.with_company(self.company_id).with_context(is_returned=True)._prepare_account_move_vals(acc_dest, acc_valuation, journal_id, qty, description, svl_id, cost)
             else:
                 cost = -1 * cost
@@ -793,3 +785,7 @@ class StockMove(models.Model):
 
     def _get_all_related_sm(self, product):
         return self.filtered(lambda m: m.product_id == product)
+
+    def _get_layer_candidates(self):
+        self.ensure_one()
+        return self.stock_valuation_layer_ids

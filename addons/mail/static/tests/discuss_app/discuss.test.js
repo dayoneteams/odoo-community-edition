@@ -34,6 +34,7 @@ import {
 
 import { OutOfFocusService } from "@mail/core/common/out_of_focus_service";
 import { rpc } from "@web/core/network/rpc";
+import { runAllTimers } from "@odoo/hoot-dom";
 
 describe.current.tags("desktop");
 defineMailModels();
@@ -583,7 +584,7 @@ test("sidebar: basic channel rendering", async () => {
     await start();
     await openDiscuss();
     await contains(".o-mail-DiscussSidebarChannel", { text: "General" });
-    await contains(".o-mail-DiscussSidebarChannel img[data-alt='Thread Image']");
+    await contains(".o-mail-DiscussSidebarChannel img[alt='Thread Image']");
     await contains(".o-mail-DiscussSidebarChannel .o-mail-DiscussSidebarChannel-commands.d-none");
     await contains(
         ".o-mail-DiscussSidebarChannel .o-mail-DiscussSidebarChannel-commands [title='Channel settings']"
@@ -1775,8 +1776,7 @@ test("warning on send with shortcut when attempting to post message with still-u
     const file = new File(["hello, world"], "text.txt", { type: "text/plain" });
     await insertText(".o-mail-Composer-input", "Dummy Message");
     await editInput(document.body, ".o-mail-Composer input[type=file]", [file]);
-    await contains(".o-mail-AttachmentCard");
-    await contains(".o-mail-AttachmentCard .fa.fa-spinner");
+    await contains(".o-mail-AttachmentCard.o-isUploading:contains(text.txt) .fa.fa-spinner");
     await contains(".o-mail-Composer-send:disabled");
     // Try to send message
     triggerHotkey("Enter");
@@ -1822,13 +1822,11 @@ test("failure on loading more messages should display error and prompt retry but
         name: "General",
     });
     const messageIds = pyEnv["mail.message"].create(
-        [...Array(60).keys()].map(() => {
-            return {
-                body: "coucou",
-                model: "discuss.channel",
-                res_id: channelId,
-            };
-        })
+        [...Array(60).keys()].map(() => ({
+            body: "coucou",
+            model: "discuss.channel",
+            res_id: channelId,
+        }))
     );
     const [selfMember] = pyEnv["discuss.channel.member"].search_read([
         ["partner_id", "=", serverState.partnerId],
@@ -1863,13 +1861,11 @@ test("Retry loading more messages on failed load more messages should load more 
         name: "General",
     });
     const messageIds = pyEnv["mail.message"].create(
-        [...Array(90).keys()].map(() => {
-            return {
-                body: "coucou",
-                model: "discuss.channel",
-                res_id: channelId,
-            };
-        })
+        [...Array(90).keys()].map(() => ({
+            body: "coucou",
+            model: "discuss.channel",
+            res_id: channelId,
+        }))
     );
     const [selfMember] = pyEnv["discuss.channel.member"].search_read([
         ["partner_id", "=", serverState.partnerId],
@@ -1893,6 +1889,8 @@ test("Retry loading more messages on failed load more messages should load more 
     messageFetchShouldFail = false;
     await click("button", { text: "Click here to retry" });
     await contains(".o-mail-Message", { count: 60 });
+    await scroll(".o-mail-Thread", 0);
+    await contains(".o-mail-Message", { count: 90 });
 });
 
 test("composer state: attachments save and restore", async () => {
@@ -1910,7 +1908,10 @@ test("composer state: attachments save and restore", async () => {
         ".o-mail-Composer:has(textarea[placeholder='Message #General…']) input[type=file]",
         [file]
     );
-    await contains(".o-mail-Composer .o-mail-AttachmentCard:not(.o-isUploading)");
+    await contains(
+        ".o-mail-Composer .o-mail-AttachmentCard:not(.o-isUploading):contains(text.txt)"
+    );
+    await contains(".o-mail-Composer .o-mail-AttachmentCard");
     // Switch to #special
     await click("button", { text: "Special" });
     // Attach files in a message for #special
@@ -1928,10 +1929,11 @@ test("composer state: attachments save and restore", async () => {
         files
     );
     await contains(".o-mail-Composer .o-mail-AttachmentCard:not(.o-isUploading)", { count: 3 });
+    await contains(".o-mail-Composer .o-mail-AttachmentCard", { count: 3 });
     // Switch back to #general
     await click("button", { text: "General" });
     await contains(".o-mail-Composer .o-mail-AttachmentCard");
-    await contains(".o-mail-AttachmentCard", { text: "text.txt" });
+    await contains(".o-mail-Composer .o-mail-AttachmentCard:contains(text.txt)");
     // Switch back to #special
     await click("button", { text: "Special" });
     await contains(".o-mail-Composer .o-mail-AttachmentCard", { count: 3 });
@@ -2020,6 +2022,7 @@ test("Message shows up even if channel data is incomplete", async () => {
         channel_type: "chat",
     });
     getService("bus_service").forceUpdateChannels();
+    await runAllTimers();
     await waitUntilSubscribe();
     await withUser(correspondentUserId, () =>
         rpc("/discuss/channel/notify_typing", {

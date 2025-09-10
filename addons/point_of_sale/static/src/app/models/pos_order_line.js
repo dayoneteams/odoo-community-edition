@@ -152,9 +152,7 @@ export class PosOrderline extends Base {
         }
 
         // Remove those that needed to be removed.
-        for (const lotLine of lotLinesToRemove) {
-            this.pack_lot_ids = this.pack_lot_ids.filter((pll) => pll.id !== lotLine.id);
-        }
+        this.update({ pack_lot_ids: [["unlink", ...lotLinesToRemove]] });
 
         for (const newLotLine of newPackLotLines) {
             this.models["pos.pack.operation.lot"].create({
@@ -328,7 +326,10 @@ export class PosOrderline extends Base {
             this.is_pos_groupable() &&
             // don't merge discounted orderlines
             this.get_discount() === 0 &&
-            floatIsZero(price - order_line_price - orderline.get_price_extra(), this.currency) &&
+            floatIsZero(
+                price - order_line_price - orderline.get_price_extra(),
+                this.currency.decimal_places
+            ) &&
             !this.isLotTracked() &&
             this.full_product_name === orderline.full_product_name &&
             isSameCustomerNote &&
@@ -377,6 +378,7 @@ export class PosOrderline extends Base {
                 this.config._product_default_values,
                 product
             ),
+            is_refund: this.qty * priceUnit < 0,
             ...customValues,
         };
         if (order.fiscal_position_id) {
@@ -670,7 +672,11 @@ export class PosOrderline extends Base {
             ),
             taxGroupLabels: [
                 ...new Set(
-                    this.product_id.taxes_id
+                    getTaxesAfterFiscalPosition(
+                        this.product_id.taxes_id,
+                        this.order_id.fiscal_position_id,
+                        this.models
+                    )
                         ?.map((tax) => tax.tax_group_id.pos_receipt_label)
                         .filter((label) => label)
                 ),
@@ -729,6 +735,12 @@ export class PosOrderline extends Base {
     }
     isSelected() {
         return this.order_id?.uiState?.selected_orderline_uuid === this.uuid;
+    }
+    setDirty(skip = false) {
+        if (this.isPartOfCombo && !skip) {
+            this.getAllLinesInCombo().forEach((line) => line.setDirty(true));
+        }
+        super.setDirty(skip);
     }
 }
 

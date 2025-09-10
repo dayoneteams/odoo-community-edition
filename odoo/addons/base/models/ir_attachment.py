@@ -18,7 +18,7 @@ from odoo import api, fields, models, SUPERUSER_ID, tools, _
 from odoo.exceptions import AccessError, ValidationError, UserError
 from odoo.http import Stream, root, request
 from odoo.tools import config, human_size, image, str2bool, consteq
-from odoo.tools.mimetypes import guess_mimetype, fix_filename_extension
+from odoo.tools.mimetypes import guess_mimetype, fix_filename_extension, _olecf_mimetypes
 from odoo.osv import expression
 
 _logger = logging.getLogger(__name__)
@@ -548,6 +548,12 @@ class IrAttachment(models.Model):
             if public:
                 allowed_ids.add(id_)
                 continue
+
+            if res_field and not self.env.is_system():
+                field = self.env[res_model]._fields[res_field]
+                if field.groups and not self.env.user.has_groups(field.groups):
+                    continue
+
             if not res_id and (self.env.is_system() or create_uid == self.env.uid):
                 allowed_ids.add(id_)
                 continue
@@ -764,6 +770,8 @@ class IrAttachment(models.Model):
             file.seek(-len(head), 1)  # rewind
             mimetype = guess_mimetype(head)
             filename = fix_filename_extension(file.filename, mimetype)
+            if mimetype in ('application/zip', *_olecf_mimetypes):
+                mimetype = mimetypes.guess_type(filename)[0]
         elif all(mimetype.partition('/')):
             filename = fix_filename_extension(file.filename, mimetype)
         else:

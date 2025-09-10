@@ -1,10 +1,15 @@
 /** @odoo-module */
 
-import { queryAll } from "@odoo/hoot-dom";
-import { reactive, useEffect, useExternalListener } from "@odoo/owl";
+import { on, queryAll } from "@odoo/hoot-dom";
+import { reactive, useComponent, useEffect, useExternalListener } from "@odoo/owl";
 import { isNode } from "@web/../lib/hoot-dom/helpers/dom";
-import { isIterable, toSelector } from "@web/../lib/hoot-dom/hoot_dom_utils";
-import { DiffMatchPatch } from "./lib/diff_match_patch";
+import {
+    isInstanceOf,
+    isIterable,
+    parseRegExp,
+    R_WHITE_SPACE,
+    toSelector,
+} from "@web/../lib/hoot-dom/hoot_dom_utils";
 import { getRunner } from "./main_runner";
 
 /**
@@ -29,6 +34,7 @@ import { getRunner } from "./main_runner";
  *
  * @typedef {{
  *  ignoreOrder?: boolean;
+ *  partial?: boolean;
  * }} DeepEqualOptions
  *
  * @typedef {[string, ArgumentType]} Label
@@ -36,6 +42,8 @@ import { getRunner } from "./main_runner";
  * @typedef {"expected" | "group" | "received" | "technical"} MarkupType
  *
  * @typedef {string | RegExp | { new(): any }} Matcher
+ *
+ * @typedef {QueryRegExp | QueryExactString | QueryPartialString} QueryPart
  *
  * @typedef {{
  *  assertions: number;
@@ -48,6 +56,11 @@ import { getRunner } from "./main_runner";
  * }} Reporting
  *
  * @typedef {import("./core/runner").Runner} Runner
+ */
+
+/**
+ * @template {unknown[]} T
+ * @typedef {T extends [any, ...infer U] ? U : never} DropFirst
  */
 
 /**
@@ -93,6 +106,7 @@ const {
     PromiseRejectionEvent,
     Reflect: { ownKeys: $ownKeys },
     RegExp,
+    requestAnimationFrame,
     Set,
     setTimeout,
     String,
@@ -119,45 +133,9 @@ const $writeText = $clipboard?.writeText.bind($clipboard);
 //-----------------------------------------------------------------------------
 
 /**
- * Returns the constructor of the given value, and if it is "Object": tries to
- * infer the actual constructor name from the string representation of the object.
- *
- * This is needed for cursed JavaScript objects such as "Arguments", which is an
- * array-like object without a proper constructor.
- *
- * @param {any} value
- */
-const getConstructor = (value) => {
-    const { constructor } = value;
-    if (constructor !== Object) {
-        return constructor || { name: null };
-    }
-    const str = value.toString();
-    const match = str.match(R_OBJECT);
-    if (!match || match[1] === "Object") {
-        return constructor;
-    }
-
-    // Custom constructor
-    const className = match[1];
-    if (!objectConstructors.has(className)) {
-        objectConstructors.set(
-            className,
-            class {
-                static name = className;
-                constructor(...values) {
-                    $assign(this, ...values);
-                }
-            }
-        );
-    }
-    return objectConstructors.get(className);
-};
-
-/**
  * @param {(...args: any[]) => any} fn
  */
-const getFunctionString = (fn) => {
+function getFunctionString(fn) {
     if (R_CLASS.test(fn.name)) {
         return `${fn.name ? `class ${fn.name}` : "anonymous class"} { ${ELLIPSIS} }`;
     }
@@ -172,62 +150,70 @@ const getFunctionString = (fn) => {
 
     const args = fn.length ? "...args" : "";
     return `${prefix}(${args}) => { ${ELLIPSIS} }`;
-};
+}
 
 /**
  * @param {unknown} value
  */
-const getGenericSerializer = (value) => {
+function getGenericSerializer(value) {
     for (const [constructor, serialize] of GENERIC_SERIALIZERS) {
-        if (value instanceof constructor) {
+        if (isInstanceOf(value, constructor)) {
             return serialize;
         }
     }
     return null;
-};
+}
 
-const makeObjectCache = () => {
+function makeObjectCache() {
     const cache = new Set();
     return {
         add: (...values) => values.forEach((value) => cache.add(value)),
         has: (...values) => values.every((value) => cache.has(value)),
     };
-};
+}
 
 /**
- * @template {(...args: any[]) => T} T
- * @param {T} instanceGetter
+ * @template T
+ * @param {T | (() => T)} value
  * @returns {T}
  */
-const memoize = (instanceGetter) => {
-    let called = false;
-    let value;
-    return function memoized(...args) {
-        if (!called) {
-            called = true;
-            value = instanceGetter(...args);
-        }
+function resolve(value) {
+    if (typeof value === "function") {
+        return value();
+    } else {
         return value;
-    };
-};
+    }
+}
+
+/**
+ * Useful to deal with symbols as primitives
+ * @param {unknown} a
+ * @param {unknown} b
+ */
+function stringSort(a, b) {
+    const strA = String(a).toLowerCase();
+    const strB = String(b).toLowerCase();
+    return strA > strB ? 1 : strA < strB ? -1 : 0;
+}
 
 /**
  * @param {string} value
  * @param {number} [length=MAX_HUMAN_READABLE_SIZE]
  */
-const truncate = (value, length = MAX_HUMAN_READABLE_SIZE) => {
+function truncate(value, length = MAX_HUMAN_READABLE_SIZE) {
     const strValue = String(value);
     return strValue.length <= length ? strValue : strValue.slice(0, length) + ELLIPSIS;
-};
+}
 
 /**
  * @param {unknown} a
  * @param {unknown} b
  * @param {boolean} ignoreOrder
+ * @param {boolean} partial
  * @param {ReturnType<makeObjectCache>} cache
  * @returns {boolean}
  */
-const _deepEqual = (a, b, ignoreOrder, cache) => {
+function _deepEqual(a, b, ignoreOrder, partial, cache) {
     // Primitives
     if (strictEqual(a, b)) {
         return true;
@@ -249,7 +235,7 @@ const _deepEqual = (a, b, ignoreOrder, cache) => {
     }
 
     // Files
-    if (a instanceof File) {
+    if (isInstanceOf(a, File)) {
         // Files
         return a.name === b.name && a.size === b.size && a.type === b.type;
     }
@@ -267,12 +253,13 @@ const _deepEqual = (a, b, ignoreOrder, cache) => {
 
     // Non-iterable objects
     if (!aIsIterable) {
-        const aKeys = $ownKeys(a);
-        if (aKeys.length !== $ownKeys(b).length) {
+        const bKeys = $ownKeys(b);
+        const diff = $ownKeys(a).length - bKeys.length;
+        if (partial ? diff < 0 : diff !== 0) {
             return false;
         }
-        for (const key of aKeys) {
-            if (!_deepEqual(a[key], b[key], ignoreOrder, cache)) {
+        for (const key of bKeys) {
+            if (!_deepEqual(a[key], b[key], ignoreOrder, partial, cache)) {
                 return false;
             }
         }
@@ -299,7 +286,7 @@ const _deepEqual = (a, b, ignoreOrder, cache) => {
         const comparisonCache = makeObjectCache();
         for (let i = 0; i < a.length; i++) {
             const bi = b.findIndex((bValue) =>
-                _deepEqual(a[i], bValue, ignoreOrder, comparisonCache)
+                _deepEqual(a[i], bValue, ignoreOrder, partial, comparisonCache)
             );
             if (bi < 0) {
                 return false;
@@ -309,14 +296,14 @@ const _deepEqual = (a, b, ignoreOrder, cache) => {
     } else {
         // Ordered iterables
         for (let i = 0; i < a.length; i++) {
-            if (!_deepEqual(a[i], b[i], ignoreOrder, cache)) {
+            if (!_deepEqual(a[i], b[i], ignoreOrder, partial, cache)) {
                 return false;
             }
         }
     }
 
     return true;
-};
+}
 
 /**
  * @param {unknown} value
@@ -324,7 +311,10 @@ const _deepEqual = (a, b, ignoreOrder, cache) => {
  * @param {ReturnType<makeObjectCache>} cache
  * @returns {[string, number]}
  */
-const _formatHumanReadable = (value, length, cache) => {
+function _formatHumanReadable(value, length, cache) {
+    if (!isSafe(value)) {
+        return `<cannot read value of ${getConstructor(value).name}>`;
+    }
     // Primitives
     switch (typeof value) {
         case "function": {
@@ -416,7 +406,7 @@ const _formatHumanReadable = (value, length, cache) => {
         }
     }
     return `${constructorPrefix}{ ${truncate(content.join(", "))} }`;
-};
+}
 
 /**
  * @param {unknown} value
@@ -425,7 +415,10 @@ const _formatHumanReadable = (value, length, cache) => {
  * @param {ReturnType<makeObjectCache>} cache
  * @returns {string}
  */
-const _formatTechnical = (value, depth, isObjectValue, cache) => {
+function _formatTechnical(value, depth, isObjectValue, cache) {
+    if (!isSafe(value)) {
+        return `<cannot read value of ${getConstructor(value).name}>`;
+    }
     if (value === S_ANY || value === S_NONE) {
         // Special case: internal symbols
         return "";
@@ -477,13 +470,56 @@ const _formatTechnical = (value, depth, isObjectValue, cache) => {
     // Non-iterable objects
     const proto = !constructor.name || constructor.name === "Object" ? "" : `${constructor.name} `;
     const content = $ownKeys(value)
-        .sort()
+        .sort(stringSort)
         .map(
             (key) =>
-                `${startIndent}${key}: ${_formatTechnical(value[key], depth + 1, true, cache)},\n`
+                `${startIndent}${String(key)}: ${_formatTechnical(
+                    value[key],
+                    depth + 1,
+                    true,
+                    cache
+                )},\n`
         );
     return `${baseIndent}${proto}{${content.length ? `\n${content.join("")}${endIndent}` : ""}}`;
-};
+}
+
+class QueryRegExp extends RegExp {
+    /**
+     * @param {string} value
+     */
+    matchValue(value) {
+        return this.test(value);
+    }
+}
+
+class QueryString extends String {
+    /** @type {(a: string; b: string) => boolean} */
+    compareFn;
+
+    /**
+     * @param {string} value
+     * @param {boolean} exclude
+     */
+    constructor(value, exclude) {
+        super(value);
+        this.exclude = exclude;
+    }
+
+    /**
+     * @param {string} value
+     */
+    matchValue(value) {
+        return this.compareFn(this.toString(), value);
+    }
+}
+
+class QueryExactString extends QueryString {
+    compareFn = (a, b) => b.includes(a);
+}
+
+class QueryPartialString extends QueryString {
+    compareFn = getFuzzyScore;
+}
 
 /** @type {Map<Function, (value: unknown) => string>} */
 const GENERIC_SERIALIZERS = new Map([
@@ -507,41 +543,34 @@ const ELLIPSIS = "…";
 const MAX_HUMAN_READABLE_SIZE = 80;
 const MIN_HUMAN_READABLE_SIZE = 8;
 
+const QUERY_EXCLUDE = "-";
+
 const R_ASYNC_FUNCTION = /^\s*async/;
 const R_CLASS = /^[A-Z][a-z]/;
 const R_NAMED_FUNCTION = /^\s*(async\s+)?function/;
 const R_INVISIBLE_CHARACTERS = /[\u00a0\u200b-\u200d\ufeff]/g;
 const R_OBJECT = /^\[object ([\w-]+)\]$/;
 
-const dmp = new DiffMatchPatch();
-const { DIFF_INSERT, DIFF_DELETE } = DiffMatchPatch;
-
 const labelObjects = new WeakSet();
 const objectConstructors = new Map();
+/** @type {(KeyboardEventInit & { callback: (ev: KeyboardEvent) => any })[]} */
+const hootKeys = [];
 const windowTarget = {
     addEventListener: window.addEventListener.bind(window),
     removeEventListener: window.removeEventListener.bind(window),
 };
 
+/**
+ * Global object used in {@link getFuzzyScore} when performing a lookup, to avoid
+ * computing score for the same string twice.
+ * @type {Record<string, number> | null}
+ */
+let fuzzyScoreMap = null;
+
 //-----------------------------------------------------------------------------
 // Exports
 //-----------------------------------------------------------------------------
 
-/**
- * @template P
- * @param {((...args: P[]) => any)[]} callbacks
- * @param {"pop" | "shift"} method
- * @param {...P} args
- */
-export function consumeCallbackList(callbacks, method, ...args) {
-    while (callbacks.length) {
-        if (method === "shift") {
-            callbacks.shift()(...args);
-        } else {
-            callbacks.pop()(...args);
-        }
-    }
-}
 /**
  * @param {string} text
  */
@@ -555,28 +584,40 @@ export async function copy(text) {
 }
 
 /**
- * @template T
- * @template {(previous: T | null) => T} F
- * @param {F} instanceGetter
+ * @param {KeyboardEvent} ev
+ */
+export function callHootKey(ev) {
+    for (const { callback, ...params } of hootKeys) {
+        if ($entries(params).every(([k, v]) => ev[k] === v)) {
+            callback(ev);
+            if (ev.defaultPrevented) {
+                return;
+            }
+        }
+    }
+}
+
+/**
+ * @template {(previous: any, ...args: any[]) => any} T
+ * @param {T} instanceGetter
  * @param {() => any} [afterCallback]
- * @returns {F}
+ * @returns {(...args: DropFirst<Parameters<T>>) => ReturnType<T>}
  */
 export function createJobScopedGetter(instanceGetter, afterCallback) {
-    /** @type {F} */
-    const getInstance = () => {
+    /** @type {(...args: DropFirst<Parameters<T>>) => ReturnType<T>} */
+    function getInstance(...args) {
         if (runner.dry) {
-            return memoized();
+            return memoized(...args);
         }
 
         const currentJob = runner.state.currentTest || runner.suiteStack.at(-1) || runner;
         if (!instances.has(currentJob)) {
             const parentInstance = [...instances.values()].at(-1);
-            instances.set(currentJob, instanceGetter(parentInstance));
+            instances.set(currentJob, instanceGetter(parentInstance, ...args));
 
             if (canCallAfter) {
-                runner.after(() => {
+                runner.after(function instanceGetterCleanup() {
                     instances.delete(currentJob);
-
                     canCallAfter = false;
                     afterCallback?.();
                     canCallAfter = true;
@@ -585,14 +626,23 @@ export function createJobScopedGetter(instanceGetter, afterCallback) {
         }
 
         return instances.get(currentJob);
-    };
+    }
 
-    const memoized = memoize(instanceGetter);
+    /** @type {(...args: DropFirst<Parameters<T>>) => ReturnType<T>} */
+    function memoized(...args) {
+        if (!memoizedCalled) {
+            memoizedCalled = true;
+            memoizedValue = instanceGetter(null, ...args);
+        }
+        return memoizedValue;
+    }
 
-    /** @type {Map<Job, T>} */
+    /** @type {Map<Job, Parameters<T>[0]>} */
     const instances = new Map();
     const runner = getRunner();
     let canCallAfter = true;
+    let memoizedCalled = false;
+    let memoizedValue;
 
     runner.after(() => instances.clear());
 
@@ -606,13 +656,13 @@ export function createReporting(parentReporting) {
     /**
      * @param {Partial<Reporting>} values
      */
-    const add = (values) => {
+    function add(values) {
         for (const [key, value] of $entries(values)) {
             reporting[key] += value;
         }
 
         parentReporting?.add(values);
-    };
+    }
 
     const reporting = reactive({
         assertions: 0,
@@ -682,13 +732,13 @@ export function deepCopy(value) {
     }
 
     if (typeof value === "object" && !Markup.isMarkup(value)) {
-        if (value instanceof String || value instanceof Number || value instanceof Boolean) {
+        if (isInstanceOf(value, String, Number, Boolean)) {
             return value;
         }
         if (isNode(value)) {
             // Nodes
             return value.cloneNode(true);
-        } else if (value instanceof Date || value instanceof RegExp) {
+        } else if (isInstanceOf(value, Date, RegExp)) {
             // Dates & regular expressions
             return new (getConstructor(value))(value);
         } else if (isIterable(value)) {
@@ -706,32 +756,25 @@ export function deepCopy(value) {
 /**
  * @template {(...args: any[]) => any} T
  * @param {T} fn
- * @param {number} [interval]
  */
-export function batch(fn, interval) {
-    /** @type {(() => ReturnType<T>)[]} */
+export function batch(fn) {
+    /** @type {Parameters<T>[]} */
     const currentBatch = [];
-    let timeoutId = 0;
 
     /** @type {T} */
-    const batched = (...args) => {
-        currentBatch.push(() => fn(...args));
-        if (timeoutId) {
-            return;
-        }
-        timeoutId = setTimeout(() => {
-            timeoutId = 0;
-            flush();
-        }, interval);
-    };
+    function batched(...args) {
+        currentBatch.push(args);
+        throttledFlush();
+    }
 
-    const flush = () => {
-        if (timeoutId) {
-            clearTimeout(timeoutId);
-            timeoutId = 0;
+    function flush() {
+        for (const args of currentBatch) {
+            fn(...args);
         }
-        consumeCallbackList(currentBatch, "shift");
-    };
+        currentBatch.length = 0;
+    }
+
+    const throttledFlush = throttle(flush);
 
     return [batched, flush];
 }
@@ -765,7 +808,7 @@ export function debounce(fn, delay) {
  * @returns {boolean}
  */
 export function deepEqual(a, b, options) {
-    return _deepEqual(a, b, options?.ignoreOrder, makeObjectCache());
+    return _deepEqual(a, b, !!options?.ignoreOrder, !!options?.partial, makeObjectCache());
 }
 
 /**
@@ -800,7 +843,13 @@ export function ensureArguments(args, ...argumentsDefs) {
  * @returns {T[]}
  */
 export function ensureArray(value) {
-    return isIterable(value) ? [...value] : [value];
+    if (Array.isArray(value)) {
+        return value;
+    }
+    if (isIterable(value)) {
+        return [...value];
+    }
+    return [value];
 }
 
 /**
@@ -808,13 +857,13 @@ export function ensureArray(value) {
  * @returns {Error}
  */
 export function ensureError(value) {
-    if (value instanceof Error) {
+    if (isInstanceOf(value, Error)) {
         return value;
     }
-    if (value instanceof ErrorEvent) {
+    if (isInstanceOf(value, ErrorEvent)) {
         return ensureError(value.error || value.message);
     }
-    if (value instanceof PromiseRejectionEvent) {
+    if (isInstanceOf(value, PromiseRejectionEvent)) {
         return ensureError(value.reason || value.message);
     }
     return new Error(String(value || "unknown error"));
@@ -895,6 +944,42 @@ export function generateHash(...strings) {
 }
 
 /**
+ * Returns the constructor of the given value, and if it is "Object": tries to
+ * infer the actual constructor name from the string representation of the object.
+ *
+ * This is needed for cursed JavaScript objects such as "Arguments", which is an
+ * array-like object without a proper constructor.
+ *
+ * @param {unknown} value
+ */
+export function getConstructor(value) {
+    const { constructor } = value;
+    if (constructor !== Object) {
+        return constructor || { name: null };
+    }
+    const str = value.toString();
+    const match = str.match(R_OBJECT);
+    if (!match || match[1] === "Object") {
+        return constructor;
+    }
+
+    // Custom constructor
+    const className = match[1];
+    if (!objectConstructors.has(className)) {
+        objectConstructors.set(
+            className,
+            class {
+                static name = className;
+                constructor(...values) {
+                    $assign(this, ...values);
+                }
+            }
+        );
+    }
+    return objectConstructors.get(className);
+}
+
+/**
  * This function computes a score that represent the fact that the
  * string contains the pattern, or not
  *
@@ -905,10 +990,15 @@ export function generateHash(...strings) {
  * Better matches will get a higher score: consecutive letters are better,
  * and a match closer to the beginning of the string is also scored higher.
  *
- * @param {string} pattern (normalized)
+ * @param {string} pattern (normalized & lower-cased)
  * @param {string} string (normalized)
  */
 export function getFuzzyScore(pattern, string) {
+    string = string.toLowerCase();
+    if (fuzzyScoreMap && string in fuzzyScoreMap) {
+        return fuzzyScoreMap[string];
+    }
+
     let totalScore = 0;
     let currentScore = 0;
     let patternIndex = 0;
@@ -924,7 +1014,11 @@ export function getFuzzyScore(pattern, string) {
         totalScore = totalScore + currentScore;
     }
 
-    return patternIndex === pattern.length ? totalScore : 0;
+    const score = patternIndex === pattern.length ? totalScore : 0;
+    if (fuzzyScoreMap) {
+        fuzzyScoreMap[string] = score;
+    }
+    return score;
 }
 
 /**
@@ -941,19 +1035,19 @@ export function getTypeOf(value) {
             if (value === null) {
                 return "null";
             }
-            if (value instanceof Date) {
+            if (isInstanceOf(value, Date)) {
                 return "date";
             }
-            if (value instanceof Error) {
+            if (isInstanceOf(value, Error)) {
                 return "error";
             }
             if (isNode(value)) {
                 return "node";
             }
-            if (value instanceof RegExp) {
+            if (isInstanceOf(value, RegExp)) {
                 return "regex";
             }
-            if (value instanceof URL) {
+            if (isInstanceOf(value, URL)) {
                 return "url";
             }
             if ($isArray(value)) {
@@ -1013,20 +1107,34 @@ export function isOfType(value, type) {
         case "any":
             return true;
         case "date":
-            return value instanceof Date;
+            return isInstanceOf(value, Date);
         case "error":
-            return value instanceof Error;
+            return isInstanceOf(value, Error);
         case "integer":
             return $isInteger(value);
         case "node":
             return isNode(value);
         case "regex":
-            return value instanceof RegExp;
+            return isInstanceOf(value, RegExp);
         case "url":
-            return value instanceof URL;
+            return isInstanceOf(value, URL);
         default:
             return typeof value === type;
     }
+}
+
+/**
+ * @param {unknown} value
+ */
+export function isSafe(value) {
+    if (value && typeof value.valueOf === "function") {
+        try {
+            value.valueOf();
+        } catch {
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
@@ -1068,38 +1176,35 @@ export function levenshtein(a, b) {
  * letters).
  *
  * @template {{ key: string }} T
- * @param {string | RegExp} pattern normalized string or RegExp
+ * @param {QueryPart[]} parsedQuery normalized string or RegExp
  * @param {Iterable<T>} items
  * @param {keyof T} [property]
  * @returns {T[]}
  */
-export function lookup(pattern, items, property = "key") {
-    /** @type {T[]} */
-    const result = [];
-    if (pattern instanceof RegExp) {
-        // Regex lookup
+export function lookup(parsedQuery, items, property = "key") {
+    for (const queryPart of parsedQuery) {
+        const isPartial = queryPart instanceof QueryPartialString;
+        if (isPartial) {
+            fuzzyScoreMap = $create(null);
+        }
+        const result = [];
         for (const item of items) {
-            if (pattern.test(item[property])) {
+            const pass = queryPart.matchValue(String(item[property]));
+            if (queryPart.exclude ? !pass : pass) {
                 result.push(item);
             }
         }
-    } else {
-        // Fuzzy lookup
-        const scores = new Map();
-        for (const item of items) {
-            if (scores.has(item)) {
-                result.push(item);
-                continue;
-            }
-            const score = getFuzzyScore(pattern, item[property]);
-            if (score > 0) {
-                scores.set(item, score);
-                result.push(item);
-            }
+        if (isPartial) {
+            result.sort(
+                (a, b) =>
+                    fuzzyScoreMap[b[property].toLowerCase()] -
+                    fuzzyScoreMap[a[property].toLowerCase()]
+            );
         }
-        result.sort((a, b) => scores.get(b) - scores.get(a));
+        items = result;
     }
-    return result;
+    fuzzyScoreMap = null;
+    return items;
 }
 
 /**
@@ -1170,7 +1275,7 @@ export function match(value, ...matchers) {
     }
     return matchers.some((matcher) => {
         if (typeof matcher === "function") {
-            if (value instanceof matcher) {
+            if (isInstanceOf(value, matcher)) {
                 return true;
             }
             matcher = new RegExp(matcher.name);
@@ -1179,7 +1284,7 @@ export function match(value, ...matchers) {
         if (R_OBJECT.test(strValue)) {
             strValue = getConstructor(value).name;
         }
-        if (matcher instanceof RegExp) {
+        if (isInstanceOf(matcher, RegExp)) {
             return matcher.test(strValue);
         } else {
             return strValue.includes(String(matcher));
@@ -1194,7 +1299,6 @@ export function match(value, ...matchers) {
 export function normalize(string) {
     return string
         .trim()
-        .toLowerCase()
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "");
 }
@@ -1221,6 +1325,58 @@ export function ordinal(number) {
             return `${strNumber}th`;
         }
     }
+}
+
+/**
+ * @param {string} query
+ * @returns {QueryPart[]}
+ */
+export function parseQuery(query) {
+    const nQuery = normalize(query);
+    if (!nQuery) {
+        return [];
+    }
+    const regex = parseRegExp(nQuery, { safe: true });
+    if (isInstanceOf(regex, RegExp)) {
+        // Do not go further: the entire query is treated as a regular expression
+        return [new QueryRegExp(regex)];
+    }
+
+    /** @type {QueryPart[]} */
+    const parsedQuery = [];
+
+    // Step 1: remove "exact" parts of the string query and add them as exact string
+    // matchers
+    const nQueryPartial = nQuery
+        .replaceAll(R_QUERY_EXACT, (...args) => {
+            const { content, exclude } = args.at(-1);
+            if (content) {
+                parsedQuery.push(new QueryExactString(content, Boolean(exclude)));
+            }
+            return "";
+        })
+        .toLowerCase(); // Lower-cased *after* extracting the exact matches
+
+    // Step 2: split remaining string query on white spaces and:
+    //  - add all excluding parts as separate partial matchers
+    //  - aggregate non-excluding parts as one partial matcher
+    const partialIncludeParts = [];
+    for (const part of nQueryPartial.split(R_WHITE_SPACE)) {
+        if (!part) {
+            continue;
+        }
+        if (part.startsWith(QUERY_EXCLUDE)) {
+            const woExclude = part.slice(QUERY_EXCLUDE.length);
+            parsedQuery.push(new QueryPartialString(woExclude, true));
+        } else {
+            partialIncludeParts.push(part);
+        }
+    }
+    if (partialIncludeParts.length) {
+        parsedQuery.push(new QueryPartialString(partialIncludeParts.join(" "), false));
+    }
+
+    return parsedQuery;
 }
 
 export async function paste() {
@@ -1290,6 +1446,28 @@ export function stringToNumber(string) {
 }
 
 /**
+ * @template {(...args: any[]) => any} T
+ * @param {T} fn
+ * @returns {T}
+ */
+export function throttle(fn) {
+    function unlock() {
+        locked = false;
+    }
+
+    let locked = false;
+
+    return function throttled(...args) {
+        if (locked) {
+            return;
+        }
+        locked = true;
+        requestAnimationFrame(unlock);
+        fn(...args);
+    };
+}
+
+/**
  * @param {string} string
  */
 export function title(string) {
@@ -1321,13 +1499,12 @@ export function toExplicitString(value) {
  * @param {{ el?: HTMLElement }} ref
  */
 export function useAutofocus(ref) {
-    let displayed = new Set();
-    useEffect(() => {
-        if (!ref.el) {
-            return;
-        }
+    /**
+     * @param {HTMLElement} el
+     */
+    function autofocus(el) {
         const nextDisplayed = new Set();
-        for (const element of ref.el.querySelectorAll("[autofocus]")) {
+        for (const element of el.querySelectorAll("[autofocus]")) {
             if (!displayed.has(element)) {
                 element.focus();
                 if (["INPUT", "TEXTAREA"].includes(element.tagName)) {
@@ -1338,12 +1515,67 @@ export function useAutofocus(ref) {
             nextDisplayed.add(element);
         }
         displayed = nextDisplayed;
-    });
+    }
+
+    let displayed = new Set();
+    useEffect(autofocus, () => [ref.el]);
+}
+
+/**
+ * @param {string[]} keyStroke
+ * @param {(ev: KeyboardEvent) => any} callback
+ */
+export function useHootKey(keyStroke, callback) {
+    const component = useComponent();
+    /** @type {KeyboardEventInit} */
+    const params = { callback: callback.bind(component) };
+    for (const key of keyStroke) {
+        switch (key) {
+            case "Alt": {
+                params.altKey = true;
+                break;
+            }
+            case "Control": {
+                params.ctrlKey = true;
+                break;
+            }
+            case "Meta": {
+                params.metaKey = true;
+                break;
+            }
+            case "Shift": {
+                params.shiftKey = true;
+                break;
+            }
+            default: {
+                params.key = key;
+                break;
+            }
+        }
+    }
+    hootKeys.push(params);
 }
 
 /** @type {EventTarget["addEventListener"]} */
 export function useWindowListener(type, callback, options) {
     return useExternalListener(windowTarget, type, (ev) => ev.isTrusted && callback(ev), options);
+}
+
+/**
+ * @param {Document} doc
+ */
+export function waitForDocument(doc) {
+    return new Promise(function (resolve) {
+        if (doc.readyState !== "loading") {
+            return resolve(true);
+        }
+        const removeListener = on(doc, "readystatechange", function checkReadyState() {
+            if (doc.readyState !== "loading") {
+                removeListener();
+                resolve(true);
+            }
+        });
+    });
 }
 
 export class Callbacks {
@@ -1357,14 +1589,11 @@ export class Callbacks {
      * @param {boolean} [once]
      */
     add(type, callback, once) {
-        if (callback instanceof Promise) {
+        if (isInstanceOf(callback, Promise)) {
             const promiseValue = callback;
-            callback = () =>
-                Promise.resolve(promiseValue).then((result) => {
-                    if (typeof result === "function") {
-                        result();
-                    }
-                });
+            callback = function waitForPromise() {
+                return Promise.resolve(promiseValue).then(resolve);
+            };
         } else if (typeof callback !== "function") {
             return;
         }
@@ -1562,12 +1791,17 @@ export class Markup {
      * @param {unknown} actual
      */
     static diff(expected, actual) {
+        if (!window.DiffMatchPatch) {
+            return null;
+        }
         const eType = typeof expected;
-        if (eType !== typeof actual || !(eType === "object" || eType === "string")) {
+        if (eType !== typeof actual || !((expected && eType === "object") || eType === "string")) {
             // Cannot diff
             return null;
         }
-        let hasDiff;
+        let hasDiff = false;
+        const { DIFF_INSERT, DIFF_DELETE } = window.DiffMatchPatch;
+        const dmp = new window.DiffMatchPatch();
         const diff = dmp
             .diff_main(formatTechnical(expected), formatTechnical(actual))
             .map((diff) => {
@@ -1726,8 +1960,14 @@ export const CASE_EVENT_TYPES = {
         icon: "fa-arrow-right text-sm",
         color: "orange",
     },
+    time: {
+        value: 0b1000000,
+        icon: "fa fa-hourglass text-sm",
+        color: "blue",
+    },
 };
 export const DEFAULT_EVENT_TYPES = CASE_EVENT_TYPES.assertion.value | CASE_EVENT_TYPES.error.value;
+export const EXACT_MARKER = `"`;
 
 export const INCLUDE_LEVEL = {
     url: 1,
@@ -1749,3 +1989,8 @@ export const STORAGE = {
 
 export const S_ANY = Symbol("any value");
 export const S_NONE = Symbol("no value");
+
+export const R_QUERY_EXACT = new RegExp(
+    `(?<exclude>-)?${EXACT_MARKER}(?<content>[^${EXACT_MARKER}]*)${EXACT_MARKER}`,
+    "g"
+);

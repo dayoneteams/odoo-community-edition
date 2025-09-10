@@ -8,6 +8,7 @@ import { floatIsZero, roundPrecision } from "@web/core/utils/numbers";
 import { roundCurrency } from "@point_of_sale/app/models/utils/currency";
 import { computeComboItems } from "./utils/compute_combo_items";
 import { accountTaxHelpers } from "@account/helpers/account_tax";
+import { toRaw } from "@odoo/owl";
 
 const { DateTime } = luxon;
 const formatCurrency = registry.subRegistries.formatters.content.monetary[1];
@@ -18,7 +19,7 @@ export class PosOrder extends Base {
     setup(vals) {
         super.setup(vals);
 
-        if (!this.session_id && (!this.finalized || typeof this.id !== "number")) {
+        if (!this.session_id?.id && (!this.finalized || typeof this.id !== "number")) {
             this.update({ session_id: this.session });
 
             if (this.state === "draft" && this.lines.length == 0 && this.payment_ids.length == 0) {
@@ -36,6 +37,7 @@ export class PosOrder extends Base {
         this.last_order_preparation_change = vals.last_order_preparation_change
             ? JSON.parse(vals.last_order_preparation_change)
             : {
+                  metadata: {},
                   lines: {},
                   generalNote: "",
                   sittingMode: "dine in",
@@ -63,7 +65,6 @@ export class PosOrder extends Base {
                 screen_data: {},
                 selected_orderline_uuid: undefined,
                 selected_paymentline_uuid: undefined,
-                locked: this.state !== "draft",
                 // Pos restaurant specific to most proper way is to override this
                 TipScreen: {
                     inputTipAmount: "",
@@ -342,7 +343,7 @@ export class PosOrder extends Base {
                         product_id: line.get_product().id,
                         name: line.get_full_product_name(),
                         basic_name: line.get_product().name,
-                        display_name: line.get_product().name,
+                        display_name: line.get_product().display_name,
                         note: line.getNote(),
                         quantity: line.get_quantity(),
                     };
@@ -364,6 +365,9 @@ export class PosOrder extends Base {
         }
         this.last_order_preparation_change.sittingMode = this.takeaway ? "takeaway" : "dine in";
         this.last_order_preparation_change.generalNote = this.general_note;
+        this.last_order_preparation_change.metadata = {
+            serverDate: serializeDateTime(DateTime.now()),
+        };
     }
 
     hasSkippedChanges() {
@@ -372,27 +376,6 @@ export class PosOrder extends Base {
 
     is_empty() {
         return this.lines.length === 0;
-    }
-
-    generate_unique_id() {
-        // Generates a public identification number for the order.
-        // The generated number must be unique and sequential. They are made 12 digit long
-        // to fit into EAN-13 barcodes, should it be needed
-
-        function zero_pad(num, size) {
-            var s = "" + num;
-            while (s.length < size) {
-                s = "0" + s;
-            }
-            return s;
-        }
-        return (
-            zero_pad(this.session.id, 5) +
-            "-" +
-            zero_pad(this.session.login_number, 3) +
-            "-" +
-            zero_pad(this.sequence_number, 4)
-        );
     }
 
     updateSavedQuantity() {
@@ -522,11 +505,12 @@ export class PosOrder extends Base {
                 }),
                 pricelist,
                 this.models["decimal.precision"].getAll(),
-                this.models["product.template.attribute.value"].getAllBy("id")
+                this.models["product.template.attribute.value"].getAllBy("id"),
+                this.config_id.currency_id
             );
         }
         const combo_children_lines = this.lines.filter(
-            (line) => line.price_type === "original" && line.combo_parent_id
+            (line) => line.price_type === "automatic" && line.combo_parent_id
         );
         combo_children_lines.forEach((line) => {
             line.set_unit_price(
@@ -752,7 +736,8 @@ export class PosOrder extends Base {
                         orderLine.get_all_prices().priceWithTax;
                     if (
                         orderLine.display_discount_policy() === "without_discount" &&
-                        !(orderLine.price_type === "manual")
+                        !(orderLine.price_type === "manual") &&
+                        orderLine.discount == 0
                     ) {
                         sum +=
                             (orderLine.get_taxed_lst_unit_price() -
@@ -1087,6 +1072,7 @@ export class PosOrder extends Base {
             })),
             change: this.get_change() && formatCurrency(this.get_change()),
             generalNote: this.general_note || "",
+            qrPaymentData: toRaw(this.get_selected_paymentline()?.qrPaymentData),
         };
     }
     getFloatingOrderName() {

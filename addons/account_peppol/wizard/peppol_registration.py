@@ -73,13 +73,14 @@ class PeppolRegistration(models.TransientModel):
 
     @api.onchange('phone_number')
     def _onchange_phone_number(self):
+        self.env['res.company']._check_phonenumbers_import()
         for wizard in self:
             if wizard.phone_number:
-                wizard.company_id._sanitize_peppol_phone_number(wizard.phone_number)
+                # The `phone_number` we set is not necessarily valid (may fail `_sanitize_peppol_phone_number`)
                 with contextlib.suppress(phonenumbers.NumberParseException):
                     parsed_phone_number = phonenumbers.parse(
                         wizard.phone_number,
-                        region=self.company_id.country_code,
+                        region=wizard.company_id.country_code,
                     )
                     wizard.phone_number = phonenumbers.format_number(
                         parsed_phone_number,
@@ -135,12 +136,8 @@ class PeppolRegistration(models.TransientModel):
 
     @api.depends('edi_user_id')
     def _compute_edi_mode(self):
-        edi_mode = self.env['ir.config_parameter'].sudo().get_param('account_peppol.edi.mode')
         for wizard in self:
-            if wizard.edi_user_id:
-                wizard.edi_mode = wizard.edi_user_id.edi_mode
-            else:
-                wizard.edi_mode = edi_mode or 'prod'
+            wizard.edi_mode = wizard.company_id._get_peppol_edi_mode()
 
     def _inverse_edi_mode(self):
         for wizard in self:

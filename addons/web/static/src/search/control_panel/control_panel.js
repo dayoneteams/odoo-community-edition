@@ -165,9 +165,12 @@ export class ControlPanel extends Component {
                 return;
             }
             const scrollingEl = this.getScrollingElement();
+            this.scrollingElementResizeObserver.observe(scrollingEl);
             scrollingEl.addEventListener("scroll", this.onScrollThrottledBound);
             this.root.el.style.top = "0px";
+            this.scrollingElementHeight = scrollingEl.scrollHeight;
             return () => {
+                this.scrollingElementResizeObserver.unobserve(scrollingEl);
                 scrollingEl.removeEventListener("scroll", this.onScrollThrottledBound);
             };
         });
@@ -239,6 +242,16 @@ export class ControlPanel extends Component {
             onDrop: (params) => this._sortEmbeddedActionDrop(params),
         });
     }
+
+    scrollingElementResizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+            if (this.scrollingElementHeight !== entry.target.scrollingElementHeight) {
+                this.oldScrollTop +=
+                    entry.target.scrollingElementHeight - this.scrollingElementHeight;
+                this.scrollingElementHeight = entry.target.scrollingElementHeight;
+            }
+        }
+    });
 
     getDropdownClass(action) {
         return (!this.env.isSmall && this._checkValueLocalStorage(action)) ||
@@ -574,7 +587,7 @@ export class ControlPanel extends Component {
                 name: action.python_method || action.action_id[0] || action.action_id,
                 resModel: action.parent_res_model,
                 context,
-                stackPosition: this.env.config.parentActionId ? "replaceCurrentAction" : "",
+                stackPosition: "replaceCurrentAction",
                 viewType: action.default_view_mode,
             },
             { isEmbeddedAction: true }

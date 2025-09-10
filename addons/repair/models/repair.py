@@ -95,7 +95,6 @@ class Repair(models.Model):
     product_uom_category_id = fields.Many2one(related='product_id.uom_id.category_id')
     lot_id = fields.Many2one(
         'stock.lot', 'Lot/Serial',
-        default=False,
         compute="compute_lot_id", store=True,
         domain="[('id', 'in', allowed_lot_ids)]", check_company=True,
         help="Products repaired are all belonging to this lot")
@@ -317,7 +316,7 @@ class Repair(models.Model):
     @api.depends('move_ids.quantity', 'move_ids.product_uom_qty', 'move_ids.product_uom.rounding')
     def _compute_has_uncomplete_moves(self):
         for repair in self:
-            repair.has_uncomplete_moves = any(float_compare(move.quantity, move.product_uom_qty, precision_rounding=move.product_uom.rounding) < 0 for move in repair.move_ids)
+            repair.has_uncomplete_moves = any(move.product_uom and float_compare(move.quantity, move.product_uom_qty, precision_rounding=move.product_uom.rounding) < 0 for move in repair.move_ids)
 
     @api.depends('move_ids', 'state', 'move_ids.product_uom_qty')
     def _compute_unreserve_visible(self):
@@ -363,6 +362,8 @@ class Repair(models.Model):
         res = super().default_get(fields_list)
         if 'picking_id' not in res and 'picking_id' in fields_list and 'default_repair_picking_id' in self.env.context:
             res['picking_id'] = self.env.context.get('default_repair_picking_id')
+        if 'lot_id' not in res and 'lot_id' in fields_list and 'default_repair_lot_id' in self.env.context:
+            res['lot_id'] = self.env.context.get('default_repair_lot_id')
         return res
 
     @api.model_create_multi
@@ -699,6 +700,9 @@ class Repair(models.Model):
         new_default_data = self.env['stock.move']._get_product_catalog_lines_data(parent_record=self)
 
         return {**default_data, **new_default_data}
+
+    def _get_product_catalog_domain(self):
+        return expression.AND([super()._get_product_catalog_domain(), [('type', '=', 'consu')]])
 
     def _get_product_catalog_order_data(self, products, **kwargs):
         product_catalog = super()._get_product_catalog_order_data(products, **kwargs)

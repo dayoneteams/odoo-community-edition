@@ -38,7 +38,8 @@ class PeppolSettingsButtons extends Component {
     }
 
     get ediMode() {
-        return this.props.record.data.edi_mode || this.props.record.data.account_peppol_edi_mode;
+        const demo_if_demo_identifier = this.props.record.data.peppol_eas === 'odemo' ? "demo": false
+        return demo_if_demo_identifier || this.props.record.data.edi_mode || this.props.record.data.account_peppol_edi_mode;
     }
 
     get modeConstraint() {
@@ -91,9 +92,11 @@ class PeppolSettingsButtons extends Component {
         });
     }
 
-    deregister() {
+    async deregister() {
         if (this.ediMode === 'demo' || !['sender', 'smp_registration', 'receiver'].includes(this.proxyState)) {
-            this._callConfigMethod("button_deregister_peppol_participant");
+            await this._callConfigMethod("button_deregister_peppol_participant");
+            // Discard any changes
+            this.props.record._discard();
         } else if (['sender', 'smp_registration', 'receiver'].includes(this.proxyState)) {
             this.showConfirmation(
                 "This will delete your Peppol registration.",

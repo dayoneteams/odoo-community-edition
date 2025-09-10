@@ -762,7 +762,7 @@ class TestAccountMove(AccountTestInvoicingCommon):
         tax_line.unlink()
 
         # But creating unbalanced misc entry shouldn't be allowed otherwise
-        with self.assertRaisesRegex(UserError, r"The move \(.*\) is not balanced\."):
+        with self.assertRaisesRegex(UserError, r"The entry is not balanced."):
             self.env["account.move"].create({
                 "move_type": "entry",
                 "line_ids": [
@@ -1195,3 +1195,51 @@ class TestAccountMove(AccountTestInvoicingCommon):
         line.tax_ids = [Command.clear()]
         self.assertEqual(len(line.tax_ids), 0)
         self.assertEqual(len(line.tax_tag_ids), 0)
+
+    def test_balance_modification_auto_balancing(self):
+        """ Test that amount currency is correctly recomputed when, without multicurrency enabled,
+        the balance is changed """
+        account = self.company_data['default_account_revenue']
+        move = self.env['account.move'].create({
+            'line_ids': [
+                Command.create({
+                    'account_id': self.company_data['default_account_receivable'].id,
+                    'balance': 20,
+                }), Command.create({
+                    'account_id': account.id,
+                    'balance': -20,
+                })]
+        })
+        line = move.line_ids.filtered(lambda l: l.account_id == account)
+        move.write({
+            'line_ids': [
+                Command.update(line.id, {
+                    'debit': 10,
+                    'credit': 0,
+                    'balance': 10
+                }),
+                Command.create({
+                    'account_id': account.id,
+                    'balance': -30,
+                })]
+        })
+
+        self.assertRecordValues(line, [
+            {'amount_currency': 10.00, 'balance': 10.00},
+        ])
+
+    def test_no_partner_id_on_duplication(self):
+        """ Test that when a account_move is duplicated the partner_id is not included in the duplicated_move """
+        move = self.env['account.move'].create({
+            'move_type': 'entry',
+            'partner_id': self.partner_a.id,
+            'date': fields.Date.from_string('2019-01-01'),
+            'currency_id': self.other_currency.id,
+            'line_ids': [
+                Command.create(self.entry_line_vals_1),
+                Command.create(self.entry_line_vals_2),
+            ],
+        })
+        move_duplicate = move.copy()
+        self.assertTrue(move_duplicate)
+        self.assertFalse(move_duplicate.partner_id)

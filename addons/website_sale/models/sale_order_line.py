@@ -42,9 +42,14 @@ class SaleOrderLine(models.Model):
     def _get_displayed_unit_price(self):
         show_tax = self.order_id.website_id.show_line_subtotals_tax_selection
         tax_display = 'total_excluded' if show_tax == 'tax_excluded' else 'total_included'
+        is_combo = self.product_type == 'combo'
 
         return self.tax_id.compute_all(
-            self.price_unit, self.currency_id, 1, self.product_id, self.order_partner_id,
+            price_unit=self._get_display_price_ignore_combo() if is_combo else self.price_unit,
+            currency=self.currency_id,
+            quantity=1.0,
+            product=self.product_id,
+            partner=self.order_partner_id,
         )[tax_display]
 
     def _get_displayed_quantity(self):
@@ -59,7 +64,7 @@ class SaleOrderLine(models.Model):
 
     def _is_reorder_allowed(self):
         self.ensure_one()
-        return self.product_id._is_add_to_cart_allowed()
+        return bool(self.product_id) and self.product_id._is_add_to_cart_allowed()
 
     def _get_cart_display_price(self):
         self.ensure_one()

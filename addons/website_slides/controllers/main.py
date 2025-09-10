@@ -741,7 +741,8 @@ class WebsiteSlides(WebsiteProfile):
                 ('res_id', '=', channel.id),
                 ('author_id', '=', request.env.user.partner_id.id),
                 ('message_type', '=', 'comment'),
-                ('subtype_id', '=', subtype_comment_id)
+                ('subtype_id', '=', subtype_comment_id),
+                ("rating_ids", "!=", False),
             ], order='write_date DESC', limit=1)
 
             if last_message:
@@ -1021,7 +1022,7 @@ class WebsiteSlides(WebsiteProfile):
         if field not in ('image_128', 'image_256', 'image_512', 'image_1024', 'image_1920'):
             return werkzeug.exceptions.Forbidden()
 
-        slide = request.env['slide.slide'].sudo().browse(slide_id).exists()
+        slide = request.env['slide.slide'].search([('id', '=', int(slide_id))])
         if not slide:
             raise werkzeug.exceptions.NotFound()
 
