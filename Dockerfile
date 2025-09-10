@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim-bookworm AS builder
 
 SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
 
@@ -61,7 +61,7 @@ RUN if [ -z "${TARGETARCH}" ]; then \
     curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_${WKHTMLTOPDF_ARCH}.deb
 
 # Final stage
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
 ENV LANG en_US.UTF-8

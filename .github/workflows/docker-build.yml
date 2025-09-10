@@ -66,8 +66,8 @@ jobs:
             18-python3.11-${{ steps.date.outputs.date }}
             18-python3.11-${{ steps.tag-version.outputs.version }}
             18-python3.11-pg16-${{ steps.date.outputs.date }}
-            18-pg16
-            18
+            18-pg16-${{ steps.tag-version.outputs.version }}
+            18-${{ steps.tag-version.outputs.version }}
             latest
 
       - name: Build and push
