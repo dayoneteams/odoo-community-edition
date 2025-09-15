@@ -21,6 +21,10 @@ ODOO_BIN="/opt/odoo/odoo-bin"
 function check_config() {
     param="$1"
     value="$2"
+    # Skip addons-path, it's handled separately by CONFIG_ADDONS_PATH
+    if [ "$param" = "addons-path" ]; then
+        return
+    fi
     if [ -n "$value" ]; then
         if grep -q -E "^\s*${param}\s*=" "$ODOO_RC"; then
             config_value=$(grep -E "^\s*${param}\s*=" "$ODOO_RC" | cut -d '=' -f2- | xargs)
@@ -65,6 +69,20 @@ function update_odoo_conf() {
         param_name=$(echo "${var#CONFIG_}" | tr '[:upper:]' '[:lower:]' | tr '_' '-' )
         value="${!var}"
 
+        
+        if [ "$var" = "CONFIG_ADDONS_PATH" ]; then
+            echo "👉 Handling addons-path specially from CONFIG_ADDONS_PATH"
+
+            if [ -n "$value" ]; then
+                # Remove all existing addons-path lines
+                sed -i '/^\s*addons-path\s*=/d' "$TEMP_CONF"
+                # Add new addons-path
+                sed -i "/\[options\]/a\\addons-path = ${value}" "$TEMP_CONF"
+                echo "Set addons-path = ${value} in odoo.conf"
+            fi
+            continue
+        fi
+        
         if [ -n "${handled_params[$param_name]}" ]; then
             echo "Skipping $param_name (handled via CLI)"
             continue
@@ -126,8 +144,6 @@ check_config "smtp-port" "$SMTP_PORT"
 check_config "smtp-user" "$SMTP_USER"
 check_config "smtp-password" "$SMTP_PASSWORD"
 
-# Add additional parameters
-check_config "addons-path" "$ADDONS_PATH"
 
 # Update odoo.conf with CONFIG_ prefixed variables
 if [ -n "$(compgen -e | grep -E "^CONFIG_")" ]; then
