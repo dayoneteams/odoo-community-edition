@@ -22,7 +22,7 @@ function check_config() {
     # Only add non-empty values to arguments
     if [ -n "$value" ]; then
         if grep -q -E "^\s*\b${param}\b\s*=" "$ODOO_RC" ; then       
-            config_value=$(grep -E "^\s*\b${param}\b\s*=" "$ODOO_RC" |cut -d " " -f3|sed 's/["\n\r]//g')
+            config_value=$(grep -E "^\s*${param}\s*=" "$ODOO_RC" | cut -d '=' -f2- | xargs)
             # If value is not empty in config, use it instead
             if [ -n "$config_value" ]; then
                 value="$config_value"
