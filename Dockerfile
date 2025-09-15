@@ -130,5 +130,26 @@ ENV MARKETPLACE_ADDONS_DIR /var/lib/odoo/addons/18.0
 ENV PATH $PATH:/opt/odoo/venv/bin
 
 USER odoo
+
+RUN if [ -d /opt/odoo/venv ]; then \
+        . /opt/odoo/venv/bin/activate && \
+        pip install --no-cache-dir --upgrade pip && \
+        REQS=""; \
+        [ -d /opt/odoo/custom_addons ] && REQS="$REQS $(find /opt/odoo/custom_addons -type f -name 'requirements.txt')" || true; \
+        [ -d /opt/odoo/enterprise ] && REQS="$REQS $(find /opt/odoo/enterprise -type f -name 'requirements.txt')" || true; \
+        [ -f /opt/odoo/requirements.txt ] && REQS="$REQS /opt/odoo/requirements.txt"; \
+        if [ -n "$REQS" ]; then \
+            for req in $REQS; do \
+                echo "Installing dependencies from $req"; \
+                pip install --no-cache-dir -r "$req"; \
+            done; \
+        else \
+            echo "No requirements.txt found; skipping pip install."; \
+        fi; \
+    else \
+        echo "Error: Virtual environment not found at /opt/odoo/venv"; \
+        exit 1; \
+    fi
+    
 EXPOSE 8069
 ENTRYPOINT ["/entrypoint.sh"]
