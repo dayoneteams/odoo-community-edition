@@ -112,7 +112,7 @@ RUN rm -f /opt/odoo/wkhtmltox.deb && chmod +x /opt/odoo/odoo-bin
 # Copy config and startup scripts
 COPY ./docker/wait-for-psql.py /usr/local/bin/wait-for-psql.py
 COPY ./docker/entrypoint.sh /
-COPY ./docker/odoo.dist.conf /opt/odoo/odoo.conf
+COPY ./docker/odoo.dist.conf /opt/odoo/odoo.dist.conf
 
 # Create necessary directories and set permissions
 RUN groupadd -r -g 999 odoo && \
