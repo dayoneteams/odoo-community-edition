@@ -12,7 +12,7 @@ cp /opt/odoo/odoo.dist.conf /opt/odoo/odoo.conf;
 : ${ODOO_RC:="/opt/odoo/odoo.conf"}
 PYTHON="/opt/odoo/venv/bin/python"
 ODOO_BIN="/opt/odoo/odoo-bin"
-
+: ${CONFIG_ADDONS_PATH:="/opt/odoo/addons,/opt/odoo/custom_addons,/opt/odoo/marketplace_addons"}
 #==============================================================================
 # FUNCTIONS
 #==============================================================================
@@ -41,13 +41,22 @@ function update_odoo_conf() {
         
        # Only process if value is not empty
         if [ -n "$value" ]; then
-            # Remove all existing entries (commented or uncommented) for this parameter
-            sed -i -E "/^\s*;\?\s*\b${param_name}\b\s*=/d" "$TEMP_CONF"
-            # Add the parameter under [options]
-            if grep -q "\[options\]" "$TEMP_CONF"; then
-                sed -i "/\[options\]/a\\${param_name} = ${value}" "$TEMP_CONF"
+            # Escape special characters for sed
+            escaped_value=$(printf '%s\n' "$value" | sed 's/[[\.*^$()+?{|]/\\&/g')
+            
+            # Check if parameter already exists (commented or not)
+            if grep -q -E "^\s*;?\s*${param_name}\s*=" "$TEMP_CONF"; then
+                # Parameter exists, uncomment and update it
+                sed -i -E "s|^\s*;?\s*${param_name}\s*=.*|${param_name} = ${escaped_value}|g" "$TEMP_CONF"
             else
-                echo -e "[options]\n${param_name} = ${value}" >> "$TEMP_CONF"
+                # Parameter doesn't exist, add it in options section
+                if grep -q "\[options\]" "$TEMP_CONF"; then
+                    # Add after [options] section
+                    sed -i "/\[options\]/a\\${param_name} = ${escaped_value}" "$TEMP_CONF"
+                else
+                    # Add [options] section and parameter
+                    echo -e "[options]\n${param_name} = ${escaped_value}" >> "$TEMP_CONF"
+                fi
             fi
             echo "Set $param_name = $value in odoo.conf"
         fi
