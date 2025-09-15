@@ -21,17 +21,14 @@ ODOO_BIN="/opt/odoo/odoo-bin"
 function check_config() {
     param="$1"
     value="$2"
-    # Only add non-empty values to arguments
     if [ -n "$value" ]; then
-        if grep -q -E "^\s*\b${param}\b\s*=" "$ODOO_RC" ; then       
+        if grep -q -E "^\s*${param}\s*=" "$ODOO_RC"; then
             config_value=$(grep -E "^\s*${param}\s*=" "$ODOO_RC" | cut -d '=' -f2- | xargs)
-            # If value is not empty in config, use it instead
             if [ -n "$config_value" ]; then
                 value="$config_value"
             fi
-        fi;
-        ODOO_ARGS+=("--${param}")
-        ODOO_ARGS+=("${value}")
+        fi
+        ODOO_ARGS+=("--${param}" "${value}")
     fi
 }
 
@@ -51,53 +48,44 @@ function update_odoo_conf() {
     cp "$ODOO_RC" "$TEMP_CONF"
     
     # List of parameters already handled by command-line flags
-    declare -A handled_params
-    handled_params["db_host"]=1
-    handled_params["db_port"]=1
-    handled_params["db_user"]=1
-    handled_params["db_password"]=1
-    handled_params["database"]=1
-    handled_params["smtp"]=1
-    handled_params["smtp-port"]=1
-    handled_params["smtp-user"]=1
-    handled_params["smtp-password"]=1
-    handled_params["addons-path"]=1
+    declare -A handled_params=(
+        [db_host]=1
+        [db_port]=1
+        [db_user]=1
+        [db_password]=1
+        [database]=1
+        [smtp]=1
+        [smtp-port]=1
+        [smtp-user]=1
+        [smtp-password]=1
+        [addons-path]=1
+    )
     
-    # Process environment variables with CONFIG_ prefix
     for var in $(compgen -e | grep -E "^CONFIG_"); do
-        # Extract parameter name by removing prefix and converting to lowercase
-        param_name=$(echo ${var#CONFIG_} | tr '[:upper:]' '[:lower:]' | tr '_' ' ' | sed 's/ /_/g')
+        param_name=$(echo "${var#CONFIG_}" | tr '[:upper:]' '[:lower:]' | tr '_' '-' )
         value="${!var}"
-        
-        # Skip if this parameter is already handled by command-line flags
+
         if [ -n "${handled_params[$param_name]}" ]; then
-            echo "Skipping $param_name as it's already handled by command-line flags"
+            echo "Skipping $param_name (handled via CLI)"
             continue
         fi
-        
-        # Only process if value is not empty
+
         if [ -n "$value" ]; then
-            # Check if parameter already exists
-            if grep -q -E "^\s*;\?\s*\b${param_name}\b\s*=" "$TEMP_CONF"; then
-                # Parameter exists, uncomment and update it
-                sed -i -E "s|^\s*;\?\s*\b${param_name}\b\s*=.*|${param_name} = ${value}|g" "$TEMP_CONF"
+            # Replace only the first occurrence
+            if grep -q -E "^\s*;?\s*${param_name}\s*=" "$TEMP_CONF"; then
+                sed -i "0,/^\s*;?\s*${param_name}\s*=.*/s//${param_name} = ${value}/" "$TEMP_CONF"
             else
-                # Parameter doesn't exist, add it in options section
-                if grep -q "\[options\]" "$TEMP_CONF"; then
-                    # Add after [options] section
-                    sed -i "/\[options\]/a\\${param_name} = ${value}" "$TEMP_CONF"
-                else
-                    # Add [options] section and parameter
-                    echo -e "[options]\n${param_name} = ${value}" >> "$TEMP_CONF"
-                fi
+                sed -i "/\[options\]/a\\${param_name} = ${value}" "$TEMP_CONF"
             fi
+
+            # Remove duplicate entries (keep first)
+            awk -F= '!seen[$1]++' "$TEMP_CONF" > "${TEMP_CONF}.dedup" && mv "${TEMP_CONF}.dedup" "$TEMP_CONF"
+
             echo "Set $param_name = $value in odoo.conf"
         fi
     done
-    
-    # Update the config file
-    cat "$TEMP_CONF" > "$ODOO_RC"
-    rm "$TEMP_CONF"
+
+    mv "$TEMP_CONF" "$ODOO_RC"
 }
 
 #==============================================================================
@@ -110,18 +98,18 @@ if [ -v PASSWORD_FILE ]; then
 fi
 
 # Set database connection parameters with fallbacks
-: ${DB_HOST:=${HOST:=${DB_PORT_5432_TCP_ADDR:='db'}}}
-: ${DB_PORT:=${PORT:=${DB_PORT_5432_TCP_PORT:=5432}}}
-: ${DB_USER:=${USER:=${DB_ENV_POSTGRES_USER:=${POSTGRES_USER:='odoo'}}}}
-: ${DB_PASSWORD:=${PASSWORD:=${DB_ENV_POSTGRES_PASSWORD:=${POSTGRES_PASSWORD:='odoo'}}}}
+: ${DB_HOST:=${HOST:='db'}}
+: ${DB_PORT:=5432}
+: ${DB_USER:=${POSTGRES_USER:='odoo'}}
+: ${DB_PASSWORD:=${POSTGRES_PASSWORD:='odoo'}}
 : ${DB_NAME:=${POSTGRES_DB:='postgres'}}
 
-# Set other Odoo parameters with defaults
 : ${SMTP_SERVER:=''}
 : ${SMTP_PORT:=''}
 : ${SMTP_USER:=''}
 : ${SMTP_PASSWORD:=''}
 : ${ADDONS_PATH:=''}
+
 
 # Initialize command line arguments array
 ODOO_ARGS=()
@@ -158,22 +146,6 @@ WAIT_PSQL_ARGS+=("--timeout=30")
 [[ -n "$DB_PASSWORD" ]] && export PGPASSWORD="$DB_PASSWORD"
 
 
-install_requirements() {
-    local dir="$1"
-    if [ -d "$dir" ]; then
-        echo "Checking for requirements.txt in $dir..."
-        find "$dir" -type f -name "requirements.txt" | while read -r req_file; do
-            echo "Found $req_file. Installing dependencies..."
-            pip install --no-cache-dir -r "$req_file"
-        done
-    else
-        echo "Directory $dir not found. Skipping requirements installation."
-    fi
-}
-install_requirements "$CUSTOM_ADDONS_DIR"
-install_requirements "$MARKETPLACE_ADDONS_DIR"
-
+# Run Odoo
 echo "Executing Odoo with arguments: ${ODOO_ARGS[@]}"
-exec $PYTHON $ODOO_BIN "${ODOO_ARGS[@]}" -i base
-
-exit 1
+exec $PYTHON $ODOO_BIN "${ODOO_ARGS[@]}"
