@@ -75,10 +75,10 @@ function update_odoo_conf() {
 
             if [ -n "$value" ]; then
                 # Remove all existing addons-path lines
-                sed -i '/^\s*addons-path\s*=/d' "$TEMP_CONF"
+                sed -i '/^\s*addons_path\s*=/d' "$TEMP_CONF"
                 # Add new addons-path
-                sed -i "/\[options\]/a\\addons-path = ${value}" "$TEMP_CONF"
-                echo "Set addons-path = ${value} in odoo.conf"
+                sed -i "/\[options\]/a\\addons_path = ${value}" "$TEMP_CONF"
+                echo "Set addons_path = ${value} in odoo.conf"
             fi
             continue
         fi
@@ -143,7 +143,6 @@ check_config "smtp" "$SMTP_SERVER"
 check_config "smtp-port" "$SMTP_PORT"
 check_config "smtp-user" "$SMTP_USER"
 check_config "smtp-password" "$SMTP_PASSWORD"
-
 
 # Update odoo.conf with CONFIG_ prefixed variables
 if [ -n "$(compgen -e | grep -E "^CONFIG_")" ]; then
