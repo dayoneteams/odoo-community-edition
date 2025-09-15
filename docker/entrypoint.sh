@@ -59,46 +59,37 @@ function update_odoo_conf() {
         [db_password]=1
         [database]=1
         [smtp]=1
-        [smtp-port]=1
-        [smtp-user]=1
-        [smtp-password]=1
-        [addons-path]=1
+        [smtp_port]=1
+        [smtp_user]=1
+        [smtp_password]=1
     )
     
     for var in $(compgen -e | grep -E "^CONFIG_"); do
-        param_name=$(echo "${var#CONFIG_}" | tr '[:upper:]' '[:lower:]' | tr '_' '-' )
+        param_name=$(echo "${var#CONFIG_}" | tr '[:upper:]' '[:lower:]')
         value="${!var}"
 
-        
-        if [ "$var" = "CONFIG_ADDONS_PATH" ]; then
-            echo "👉 Handling addons-path specially from CONFIG_ADDONS_PATH"
-
-            if [ -n "$value" ]; then
-                # Remove all existing addons-path lines
-                sed -i '/^\s*addons_path\s*=/d' "$TEMP_CONF"
-                # Add new addons-path
-                sed -i "/\[options\]/a\\addons_path = ${value}" "$TEMP_CONF"
-                echo "Set addons_path = ${value} in odoo.conf"
-            fi
-            continue
-        fi
         
         if [ -n "${handled_params[$param_name]}" ]; then
             echo "Skipping $param_name (handled via CLI)"
             continue
         fi
 
+        # Only process if value is not empty
         if [ -n "$value" ]; then
-            # Replace only the first occurrence
-            if grep -q -E "^\s*;?\s*${param_name}\s*=" "$TEMP_CONF"; then
-                sed -i "0,/^\s*;?\s*${param_name}\s*=.*/s//${param_name} = ${value}/" "$TEMP_CONF"
+            # Check if parameter already exists (commented or not)
+            if grep -q -E "^\s*;\?\s*\b${param_name}\b\s*=" "$TEMP_CONF"; then
+                # Parameter exists, uncomment and update it
+                sed -i -E "s|^\s*;\?\s*\b${param_name}\b\s*=.*|${param_name} = ${value}|g" "$TEMP_CONF"
             else
-                sed -i "/\[options\]/a\\${param_name} = ${value}" "$TEMP_CONF"
+                # Parameter doesn't exist, add it in options section
+                if grep -q "\[options\]" "$TEMP_CONF"; then
+                    # Add after [options] section
+                    sed -i "/\[options\]/a\\${param_name} = ${value}" "$TEMP_CONF"
+                else
+                    # Add [options] section and parameter
+                    echo -e "[options]\n${param_name} = ${value}" >> "$TEMP_CONF"
+                fi
             fi
-
-            # Remove duplicate entries (keep first)
-            awk -F= '!seen[$1]++' "$TEMP_CONF" > "${TEMP_CONF}.dedup" && mv "${TEMP_CONF}.dedup" "$TEMP_CONF"
-
             echo "Set $param_name = $value in odoo.conf"
         fi
     done
@@ -126,7 +117,6 @@ fi
 : ${SMTP_PORT:=''}
 : ${SMTP_USER:=''}
 : ${SMTP_PASSWORD:=''}
-: ${ADDONS_PATH:=''}
 
 
 # Initialize command line arguments array
