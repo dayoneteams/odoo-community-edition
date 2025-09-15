@@ -3,13 +3,13 @@
 set -e
 
 
-cp /opt/odoo/config/odoo.dist.conf /opt/odoo/config/odoo.conf;
+cp /opt/odoo/odoo.dist.conf /opt/odoo/odoo.conf;
 #==============================================================================
 # CONFIGURATION
 #==============================================================================
 
 # Define config file location if not set
-: ${ODOO_RC:="/opt/odoo/config/odoo.conf"}
+: ${ODOO_RC:="/opt/odoo/odoo.conf"}
 PYTHON="/opt/odoo/venv/bin/python"
 ODOO_BIN="/opt/odoo/odoo-bin"
 
