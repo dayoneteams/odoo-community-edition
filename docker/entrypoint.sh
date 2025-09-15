@@ -39,21 +39,15 @@ function update_odoo_conf() {
         value="${!var}"
 
         
-        # Only process if value is not empty
+       # Only process if value is not empty
         if [ -n "$value" ]; then
-            # Check if parameter already exists (commented or not)
-            if grep -q -E "^\s*;\?\s*\b${param_name}\b\s*=" "$TEMP_CONF"; then
-                # Parameter exists, uncomment and update it
-                sed -i -E "s|^\s*;\?\s*\b${param_name}\b\s*=.*|${param_name} = ${value}|g" "$TEMP_CONF"
+            # Remove all existing entries (commented or uncommented) for this parameter
+            sed -i -E "/^\s*;\?\s*\b${param_name}\b\s*=/d" "$TEMP_CONF"
+            # Add the parameter under [options]
+            if grep -q "\[options\]" "$TEMP_CONF"; then
+                sed -i "/\[options\]/a\\${param_name} = ${value}" "$TEMP_CONF"
             else
-                # Parameter doesn't exist, add it in options section
-                if grep -q "\[options\]" "$TEMP_CONF"; then
-                    # Add after [options] section
-                    sed -i "/\[options\]/a\\${param_name} = ${value}" "$TEMP_CONF"
-                else
-                    # Add [options] section and parameter
-                    echo -e "[options]\n${param_name} = ${value}" >> "$TEMP_CONF"
-                fi
+                echo -e "[options]\n${param_name} = ${value}" >> "$TEMP_CONF"
             fi
             echo "Set $param_name = $value in odoo.conf"
         fi
