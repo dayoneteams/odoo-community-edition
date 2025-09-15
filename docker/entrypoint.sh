@@ -3,13 +3,13 @@
 set -e
 
 
-cp /opt/odoo/odoo.dist.conf /opt/odoo/odoo.conf;
+cp /opt/odoo/config/odoo.dist.conf /opt/odoo/config/odoo.conf;
 #==============================================================================
 # CONFIGURATION
 #==============================================================================
 
 # Define config file location if not set
-: ${ODOO_RC:="/opt/odoo/odoo.conf"}
+: ${ODOO_RC:="/opt/odoo/config/odoo.conf"}
 PYTHON="/opt/odoo/venv/bin/python"
 ODOO_BIN="/opt/odoo/odoo-bin"
 
@@ -17,24 +17,6 @@ ODOO_BIN="/opt/odoo/odoo-bin"
 # FUNCTIONS
 #==============================================================================
 
-# Function to add parameters to command line arguments
-function check_config() {
-    param="$1"
-    value="$2"
-    # Skip addons-path, it's handled separately by CONFIG_ADDONS_PATH
-    if [ "$param" = "addons-path" ]; then
-        return
-    fi
-    if [ -n "$value" ]; then
-        if grep -q -E "^\s*${param}\s*=" "$ODOO_RC"; then
-            config_value=$(grep -E "^\s*${param}\s*=" "$ODOO_RC" | cut -d '=' -f2- | xargs)
-            if [ -n "$config_value" ]; then
-                value="$config_value"
-            fi
-        fi
-        ODOO_ARGS+=("--${param}" "${value}")
-    fi
-}
 
 # Function to modify odoo.conf file with variables from environment
 function update_odoo_conf() {
@@ -51,29 +33,12 @@ function update_odoo_conf() {
     # Copy the current config to temp file
     cp "$ODOO_RC" "$TEMP_CONF"
     
-    # List of parameters already handled by command-line flags
-    declare -A handled_params=(
-        [db_host]=1
-        [db_port]=1
-        [db_user]=1
-        [db_password]=1
-        [database]=1
-        [smtp]=1
-        [smtp_port]=1
-        [smtp_user]=1
-        [smtp_password]=1
-    )
     
     for var in $(compgen -e | grep -E "^CONFIG_"); do
         param_name=$(echo "${var#CONFIG_}" | tr '[:upper:]' '[:lower:]')
         value="${!var}"
 
         
-        if [ -n "${handled_params[$param_name]}" ]; then
-            echo "Skipping $param_name (handled via CLI)"
-            continue
-        fi
-
         # Only process if value is not empty
         if [ -n "$value" ]; then
             # Check if parameter already exists (commented or not)
@@ -101,38 +66,12 @@ function update_odoo_conf() {
 # MAIN SCRIPT
 #==============================================================================
 
-# Handle password from file if provided
-if [ -v PASSWORD_FILE ]; then
-    DB_PASSWORD="$(< $PASSWORD_FILE)"
-fi
-
 # Set database connection parameters with fallbacks
-: ${DB_HOST:=${HOST:='db'}}
-: ${DB_PORT:=5432}
-: ${DB_USER:=${POSTGRES_USER:='odoo'}}
-: ${DB_PASSWORD:=${POSTGRES_PASSWORD:='odoo'}}
-: ${DB_NAME:=${POSTGRES_DB:='postgres'}}
-
-: ${SMTP_SERVER:=''}
-: ${SMTP_PORT:=''}
-: ${SMTP_USER:=''}
-: ${SMTP_PASSWORD:=''}
-
-
-# Initialize command line arguments array
-ODOO_ARGS=()
-# Add database connection parameters
-check_config "db_host" "$DB_HOST"
-check_config "db_port" "$DB_PORT"
-check_config "db_user" "$DB_USER"
-check_config "db_password" "$DB_PASSWORD"
-check_config "database" "$DB_NAME"
-
-# Add SMTP parameters
-check_config "smtp" "$SMTP_SERVER"
-check_config "smtp-port" "$SMTP_PORT"
-check_config "smtp-user" "$SMTP_USER"
-check_config "smtp-password" "$SMTP_PASSWORD"
+: ${DB_HOST:=${CONFIG_DB_HOST:='db'}}
+: ${DB_PORT:=${CONFIG_DB_PORT:='5432'}}
+: ${DB_USER:=${CONFIG_DB_USER:='odoo'}}
+: ${DB_PASSWORD:=${CONFIG_DB_PASSWORD:='odoo'}}
+: ${DB_NAME:=${CONFIG_DB_NAME:='postgres'}}
 
 # Update odoo.conf with CONFIG_ prefixed variables
 if [ -n "$(compgen -e | grep -E "^CONFIG_")" ]; then
@@ -152,11 +91,10 @@ WAIT_PSQL_ARGS+=("--timeout=30")
 
 
 # Run Odoo
-echo "Executing Odoo with arguments: ${ODOO_ARGS[@]}"
 if psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -p "$DB_PORT" -tAc "SELECT 1 FROM pg_tables WHERE tablename='ir_module_module';" | grep -q 1; then
     echo "Database already initialized, skipping -i base"
-    exec $PYTHON $ODOO_BIN "${ODOO_ARGS[@]}"
+    exec $PYTHON $ODOO_BIN --config="$ODOO_RC"
 else
     echo "Database is empty, initializing with -i base"
-    exec $PYTHON $ODOO_BIN "${ODOO_ARGS[@]}" -i base
+    exec $PYTHON $ODOO_BIN --config="$ODOO_RC" -i base
 fi
