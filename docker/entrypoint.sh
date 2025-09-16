@@ -96,8 +96,8 @@ WAIT_PSQL_ARGS+=("--timeout=30")
 # Run Odoo
 if psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -p "$DB_PORT" -tAc "SELECT 1 FROM pg_tables WHERE tablename='ir_module_module';" | grep -q 1; then
     echo "Database already initialized, skipping -i base"
-    exec $PYTHON $ODOO_BIN --config="$ODOO_RC"
+    exec $PYTHON $ODOO_BIN --config="$ODOO_RC" "$@"
 else
     echo "Database is empty, initializing with -i base"
-    exec $PYTHON $ODOO_BIN --config="$ODOO_RC" -i base
+    exec $PYTHON $ODOO_BIN --config="$ODOO_RC" -i base "$@"
 fi
