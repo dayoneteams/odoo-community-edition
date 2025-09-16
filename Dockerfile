@@ -111,22 +111,22 @@ RUN groupadd -r -g 999 odoo && \
 # Copy configuration and scripts first
 COPY ./docker/wait-for-psql.py /usr/local/bin/wait-for-psql.py
 COPY ./docker/entrypoint.sh /entrypoint.sh
-COPY ./docker/odoo.dist.conf /opt/odoo/odoo.dist.conf
 
 # Copy Odoo files from builder
 COPY --from=builder /opt/odoo /opt/odoo
-
 # Create directories and set permissions
 RUN mkdir -p \
         /var/lib/odoo/sessions \
         /home/odoo/.local \
+        /opt/odoo/config \
         /opt/odoo/custom_addons \
         /opt/odoo/marketplace_addons && \
     chmod +x /entrypoint.sh /usr/local/bin/wait-for-psql.py /opt/odoo/odoo-bin && \
     chown -R odoo:odoo /opt/odoo /var/lib/odoo /home/odoo
-
+    
+COPY ./docker/odoo.dist.conf /opt/odoo/config/odoo.dist.conf
 # Set environment variables
-ENV ODOO_RC=/opt/odoo/odoo.conf \
+ENV ODOO_RC=/opt/odoo/config/odoo.conf \
     CUSTOM_ADDONS_DIR=/opt/odoo/custom_addons \
     MARKETPLACE_ADDONS_DIR=/opt/odoo/marketplace_addons \
     PATH=$PATH:/opt/odoo/venv/bin
