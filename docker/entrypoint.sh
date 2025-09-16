@@ -9,7 +9,7 @@ cp /opt/odoo/odoo.dist.conf /opt/odoo/odoo.conf;
 #==============================================================================
 
 # Define config file location if not set
-: ${ODOO_RC:="/opt/odoo/odoo.conf"}
+: ${ODOO_RC:="/opt/odoo/config/odoo.conf"}
 PYTHON="/opt/odoo/venv/bin/python"
 ODOO_BIN="/opt/odoo/odoo-bin"
 : ${CONFIG_ADDONS_PATH:="/opt/odoo/addons,/opt/odoo/custom_addons,/opt/odoo/marketplace_addons"}
@@ -58,7 +58,7 @@ function update_odoo_conf() {
                     echo -e "[options]\n${param_name} = ${escaped_value}" >> "$TEMP_CONF"
                 fi
             fi
-            echo "Set $param_name = $value in odoo.conf"
+            echo "Set $param_name in odoo.conf"
         fi
     done
 
