@@ -3,7 +3,7 @@
 set -e
 
 
-cp /opt/odoo/odoo.dist.conf /opt/odoo/odoo.conf;
+cp /opt/odoo/config/odoo.dist.conf /opt/odoo/config/odoo.conf;
 #==============================================================================
 # CONFIGURATION
 #==============================================================================
